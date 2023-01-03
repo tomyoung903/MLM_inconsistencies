@@ -16,5 +16,7 @@ acceptable_alternatives_1000_ignore_cws_nos_50.pkl: data used to expose and calc
 
 calculate_inconsistencies_t5_c4.py: code used to expose and calculate the inconsistencies among the conditionals learned by Roberta
 
+# Discussion
+
 We are doing more experiments on this topic at the moment. Leave a comment under ''issues'' for questions/discussion.
 
