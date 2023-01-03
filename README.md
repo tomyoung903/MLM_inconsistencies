@@ -12,7 +12,7 @@ pkls/acceptable_alternatives_bigrams.pkl: data used to expose and calculate the 
 
 roberta_for_bigram_inconsistencies_in_bulk.py: code used to expose and calculate the inconsistencies among the conditionals learned by Roberta
 
-acceptable_alternatives_1000_ignore_cws_nos_50.pkl: data used to expose and calculate the inconsistencies among the conditionals learned by T5
+pkls/acceptable_alternatives_1000_ignore_cws_nos_50.pkl: data used to expose and calculate the inconsistencies among the conditionals learned by T5
 
 calculate_inconsistencies_t5_c4.py: code used to expose and calculate the inconsistencies among the conditionals learned by Roberta
 
