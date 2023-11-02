@@ -6,25 +6,26 @@ from argparse import ArgumentParser
 from tqdm import tqdm
 import pickle
 
-# nohup srun -p gpu-a100 -n 1 -t 20:00:00 python calculate_inconsistencies_t5_c4.py \
-# --url_to_probs_dict_file './data/pkls/url_to_probs_c4_dict_with_labels_t5_11b.pkl' \
-# --c4_json_file './data/c4-train.00000-of-00512-list-of-lists.json' \
+# nohup srun -p gpu-a100 -n 1 -t 20:00:00 python calculate_inconsistencies_t5_c4.py url_to_probs_dict_file './data/pkls/url_to_probs_c4_dict_with_labels_t5_11b_valid.pkl' \
+# --c4_json_file './data/c4-validation.00000-of-00001-list-of-lists' \
+# --acceptable_alternatives_file './data/pkls/acceptable_alternatives_1000_ignore_cws_nos_50_valid.pkl' \ 
 # --model_name 't5-11b' \
 # --model_parallelism \
-# --cache_dir './t5-11b-cache' > nohups/nohup_t5_11b_c4_labels.out &
-
-
+# --cache_dir './t5-11b-cache' > nohups/nohup_t5_11b_valid.out &
 
 
 def run():
     parser = ArgumentParser()
     parser.add_argument("--no_samples", type=int, default=10000)
     parser.add_argument("--model_name", type=str, default='t5-3b')
+    # parser.add_argument("--model_name", type=str, default='google/ul2')
+    # "google/ul2", cache_dir='/work/09127/tomyoung/ls6/LLM_cache/google-ul2/'
     parser.add_argument("--si2bsp2op_file", type=str, default='si2bsp2op-t5-3b-3000.json')
-    parser.add_argument("--acceptable_alternatives_file", type=str, default='./data/pkls/acceptable_alternatives.pkl')
-    parser.add_argument("--cache_dir", type=str, default='./t5-3b-cache')
+    parser.add_argument("--acceptable_alternatives_file", type=str, default='/work/09127/tomyoung/ls6/data/pkls/acceptable_alternatives_1000_ignore_cws_nos_50_valid.pkl')
+    # parser.add_argument("--cache_dir", type=str, default='/work/09127/tomyoung/ls6/LLM_cache/t5-3b-cache')
+    parser.add_argument("--cache_dir", type=str, default='/work/09127/tomyoung/ls6/LLM_cache/t5-3b-cache')
     parser.add_argument("--url_to_probs_dict_file", type=str, default='./data/pkls/url_to_probs_dict.pkl')
-    parser.add_argument("--c4_json_file", type=str, default='c4-train.00000-of-00512-list-of-lists.json')
+    parser.add_argument("--c4_json_file", type=str, default='/work/09127/tomyoung/ls6/data/jsons/c4-validation.00000-of-00001-list-of-lists.json')
     parser.add_argument('--model_parallelism', action='store_true')
     parser.add_argument('--no-model_parallelism', dest='ignore_common_words', action='store_false')
     parser.set_defaults(model_parallelism=True)
@@ -64,12 +65,18 @@ def run():
             acceptable_alternatives_multi[key] = acceptable_alternatives[key]
 
 
+
     paired_keys = []
-    # we want to find the keys that have the same story_id and paragraph_id and their positions differ by 1
-    for k1 in acceptable_alternatives_multi:
-        for k2 in acceptable_alternatives_multi:
-            if k1[0] == k2[0] and k1[1] == k2[1] and abs(k1[2] - k2[2])==1:
-                paired_keys.append((k1, k2))
+    ''' we want to find the keys that have the same story_id and paragraph_id and their positions differ by 1; 
+    this is because we want cases where the constant token is important to the predicted token'''
+    for k1 in tqdm(acceptable_alternatives_multi):
+        k1_copy = copy.deepcopy(k1)
+        k2 = (k1_copy[0], k1_copy[1], k1_copy[2] + 1)
+        if k2 in acceptable_alternatives_multi:
+            paired_keys.append((k1, k2))
+        k2 = (k1_copy[0], k1_copy[1], k1_copy[2] - 1)
+        if k2 in acceptable_alternatives_multi:
+            paired_keys.append((k1, k2))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if args.model_parallelism:
@@ -79,7 +86,7 @@ def run():
 
     url_to_probs_dict = dict()
     for pair in tqdm(paired_keys):
-        # pair[0] is the new proposed sequence
+        # pair[0] is the new proposed sequence, the position id in pair[1] is for the constant token
         for option_id in range(len(acceptable_alternatives_multi[pair[0]][0])):
             # if the option is the same as the original sequence, skip
             if acceptable_alternatives_multi[pair[0]][3][option_id] == '<s>' + dicts_realnewslike[pair[0][0]][pair[0][1]] + '</s>':
@@ -113,7 +120,7 @@ def run():
                 print(T5_tokenized_original)
                 continue
 
-            # check pair[1][2] to learn if we want to go left or right
+            # check pair[1][2] to learn if we want to go left or right. Go left means that the position of interest is to the left of the constant token
             go_left = True
             if pair[1][2] - pair[0][2] == 1:
                 go_left = False
@@ -143,8 +150,6 @@ def run():
             # compute the joint probs of the original bigram and the proposed bigram 
             T5_tokenized_original_temp = copy.deepcopy(T5_tokenized_original)
             T5_tokenized_proposed_temp = copy.deepcopy(T5_tokenized_proposed)
-
-
             url_to_probs_dict[(pair[0], pair[1], option_id)] = dict()
             # mask the original bigram with <extra_id_0>
             if not go_left:
