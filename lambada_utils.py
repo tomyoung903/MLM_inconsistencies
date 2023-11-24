@@ -5,16 +5,34 @@ import numpy as np
 import torch
 from transformers.modeling_outputs import Seq2SeqLMOutput
 from torch.nn import CrossEntropyLoss
+from tqdm import tqdm
+import json
 
 
 class LambadaOutputProcessor:
     '''Process the output (completion) of the LLM model on the lambada dataset to obtain valid last words.'''
-    def __init__(self, tokenizer, dataset):
+    def __init__(self, 
+                 tokenizer, 
+                 ul2_mode: str,
+                 lambada_test_set_path: str,):
         self.tokenizer = tokenizer
         self.ENDING_PUNCTUATIONS = ',!.:;?' # If the model generates one, it is considered that the sentence is complete and we can parse for the last word
         self.vocab = tokenizer.get_vocab()
         self.ENDING_PUNCTUATIONS_IDS_LIST = [self.vocab[p] for p in self.ENDING_PUNCTUATIONS]
-        self.dataset = dataset
+        with open(lambada_test_set_path, "r") as f:
+            lambada = [json.loads(line) for line in f.readlines()]
+
+
+        # To use the NLG mode of UL2, append [NLG] to the beginning of each input, and <extra_id_0> to the end
+        lambada = [
+            {
+                "inputs_pretokenized": ul2_mode + " " + x['inputs_pretokenized'] + " <extra_id_0>",
+                "targets_pretokenized": x['targets_pretokenized']
+            } 
+            for x in lambada
+        ]
+
+        self.dataset = lambada
 
     def get_word_from_completion(self, completion: str):
         '''Get the last word from the given completion, if there is a valid one. Return the word.'''
@@ -122,43 +140,6 @@ class LambadaOutputProcessor:
         return completions_ids_return
     
 
-
-    def get_words_from_completions_deprecated(self, completions: List[str]):
-        '''Get the last word from each of the given completions,  Return all the words.'''
-        # if a punctuation can be found in the completion, get the word before the punctuation
-        words = []
-        for completion in completions:
-            # find the punctuation
-            for i in range(len(completion)):
-                if completion[i] in self.ENDING_PUNCTUATIONS:
-                    word = completion[:i]
-                    words.append(word)
-                    # print(words)
-                    break
-
-        # if the word starts with <pad>, remove it
-        words = [word[5:] if word.startswith("<pad>") else word for word in words]
-
-        # # check it it the case that, assert that if the word starts with <extra_id_0>, ' ' follows. print the word if it is not the case
-        # for word in words:
-        #     if word.startswith("<extra_id_0>") and len(word) > 13:
-        #         if word[12] != " ":
-        #             print('word[12] != \" \"')
-        #             print(word)
-        # if the word starts with <pad>, remove it
-        word = word[5:] if word.startswith("<pad>") else word
-        # if the word starts with <extra_id_0>, remove it
-        words = [word[12:] if word.startswith("<extra_id_0>") else word for word in words]
-        # if the word starts with ' ', remove it
-        words = [word[1:] if word.startswith(" ") else word for word in words]
-        # if the word ends with ' ', remove the ' '
-        words = [word[:-1] if word.endswith(" ") else word for word in words]
-        # if the word is empty, remove it
-        words = [word for word in words if word != ""]
-        # if there are multiple words in word, discount it
-        words = [word for word in words if len(word.split(" ")) == 1]
-        return words
-    
     def create_offset_sample(self,
                             inputs: str, 
                             labels: torch.Tensor, 
@@ -194,19 +175,36 @@ class LambadaOutputProcessor:
                            to_gpu=False):
         '''add offset to the samples'''
         dataset_offset = {}
-        for example_id in range(len(id_to_completions_ids)):
+        for example_id in tqdm(range(len(id_to_completions_ids))):
+            if len(id_to_completions_ids[example_id]) == 0:
+                continue
             for offset in range(max_offset):
-                dataset_offset[(example_id, offset)] = []
-                for completion in id_to_completions_ids[example_id]:
-                    dataset_offset[(example_id, offset)].append(
-                        self.create_offset_sample(
-                            self.dataset[example_id]['inputs_pretokenized'], 
-                            completion, 
-                            offset=offset,
-                            to_gpu=to_gpu
-                        )
-                    )
+                # get input_ids, which is identical for all completions
+                input_ids = self.create_offset_sample(
+                    self.dataset[example_id]['inputs_pretokenized'],
+                    id_to_completions_ids[example_id][0], # any completion is fine to get the input_ids
+                    offset=offset,
+                    to_gpu=to_gpu,
+                )[0]
+                labels = [
+                    self.create_offset_sample(
+                        self.dataset[example_id]['inputs_pretokenized'],
+                        completion,
+                        offset=offset,
+                        to_gpu=to_gpu,
+                    )[1]
+                    for completion in id_to_completions_ids[example_id]
+                ]
+                # pad into a single tensor
+                labels = torch.nn.utils.rnn.pad_sequence(
+                    labels, batch_first=True, padding_value=self.tokenizer.pad_token_id)
+                dataset_offset[(example_id, offset)] = {
+                    "inputs": input_ids,
+                    "labels": labels
+                }
+                    
         return dataset_offset
+        
 
     def create_middle_off_sample(self,
                                 inputs: str,
@@ -221,7 +219,7 @@ class LambadaOutputProcessor:
         input_ids = self.tokenizer(inputs, return_tensors="pt").input_ids
 
         '''
-        input_ids (1*len) == input_regular_tokens, extra_id_0, eos_token_id
+        input_ids (1*len) == [input_regular_tokens, extra_id_0, eos_token_id]
          (break down input_regular_tokens) -> 
           input_regular_tokens_keep_0, input_regular_tokens_move_0, input_regular_tokens_keep_1, extra_id_0, eos_token_id
          (replace input_regular_tokens_move_0 with <extra_id_0>) -> 
@@ -230,7 +228,7 @@ class LambadaOutputProcessor:
         middle_span_length: len(input_regular_tokens_move_0)
         middle_to_end_gap: len(input_regular_tokens_keep_1)
             
-        labels (1D) == extra_id_0, labels_regular_tokens
+        labels (1D) == [extra_id_0, labels_regular_tokens]
             (add input_regular_tokens_move_0 to the front and change <extra_id_0> to <extra_id_1>) ->
             extra_id_0, input_regular_tokens_move_0, extra_id_1, labels_regular_tokens
 
@@ -241,24 +239,27 @@ class LambadaOutputProcessor:
         input_regular_tokens_keep_1 = input_regular_tokens[-middle_to_end_gap:]
         input_regular_tokens_move_0 = input_regular_tokens[-middle_to_end_gap-middle_span_length:-middle_to_end_gap]
         input_regular_tokens_keep_0 = input_regular_tokens[:-middle_to_end_gap-middle_span_length]
+        
+        extra_id_0 = torch.tensor([self.tokenizer.convert_tokens_to_ids("<extra_id_0>")])
+        extra_id_1 = torch.tensor([self.tokenizer.convert_tokens_to_ids("<extra_id_1>")])
 
         if return_tensor == "inputs":
             input_ids_return = torch.cat(
                 (
                     input_regular_tokens_keep_0,
-                    self.tokenizer.convert_tokens_to_ids("<extra_id_0>"),
+                    extra_id_0,
                     input_regular_tokens_keep_1,
-                    self.tokenizer.convert_tokens_to_ids("<extra_id_1>"),
-                    self.tokenizer.eos_token_id
+                    extra_id_1,
+                    torch.tensor([self.tokenizer.eos_token_id])
                 )
             )
             return input_ids_return
         elif return_tensor == "labels":
             labels_return = torch.cat(
                 (
-                    self.tokenizer.convert_tokens_to_ids("<extra_id_0>"),
+                    extra_id_0,
                     input_regular_tokens_move_0,
-                    self.tokenizer.convert_tokens_to_ids("<extra_id_1>"),
+                    extra_id_1,
                     labels[1:]
                 )
             )
@@ -274,7 +275,10 @@ class LambadaOutputProcessor:
                                 to_gpu=False):
         '''Apply create_middle_off_sample to all the completions of each example by calling create_middle_off_sample'''
         dataset_middle_off = {}
-        for example_id in range(len(id_to_completions)):
+        for example_id in tqdm(range(len(id_to_completions))):
+            # skip if there is no completion
+            if len(id_to_completions[example_id]) == 0:
+                continue
             for middle_span_length in range_middle_span_length:
                 for middle_to_end_gap in range_middle_to_end_gap:
                     inputs = self.create_middle_off_sample(
@@ -307,15 +311,7 @@ class LambadaOutputProcessor:
                             "labels": labels
                         }
         return dataset_middle_off
-                    # dataset_middle_off[(example_id, middle_span_length, middle_to_end_gap)] = dict()
-                    # dataset_middle_off[(example_id, middle_span_length, middle_to_end_gap)]["inputs"] 
                     
-                        
-            
-
-
-
-
     def is_correct_completion(self, example_index:int, completion:torch.Tensor):
         if not isinstance(completion, torch.Tensor):
             return False
@@ -331,7 +327,7 @@ class LambadaOutputProcessor:
 
 def multi_labels_forward(
     model,
-    input_ids: torch.Tensor,
+    input_ids: torch.Tensor, 
     labels: torch.Tensor,
     use_cache: bool = None,
     return_dict: bool = None
@@ -339,7 +335,12 @@ def multi_labels_forward(
     r"""
     Sometimes the input_ids are the same for multiple labels. This function is to avoid the repeated encoder computation.
     Copied from T5ForConditionalGeneration.forward() from transformers/models/t5/modeling_t5.py with minor changes.
-    ```"""
+
+    Args:
+        input_ids (`torch.Tensor` of shape `(1, sequence_length)`):
+        labels (`torch.Tensor` of shape `(batch_size, sequence_length)`):
+
+    """
     use_cache = use_cache if use_cache is not None else model.config.use_cache
     return_dict = return_dict if return_dict is not None else model.config.use_return_dict
 
@@ -355,7 +356,7 @@ def multi_labels_forward(
     # get batch size from labels
     batch_size = labels.shape[0]
 
-    # repeat a long the batch dimension to match the number of labels 
+    # repeat along the batch dimension to match the number of labels 
     hidden_states = hidden_states.repeat(batch_size, 1, 1)
 
     if model.model_parallel:

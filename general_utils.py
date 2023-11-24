@@ -7,6 +7,33 @@ import numpy as np
 from torch import Tensor
 import torch
 
+
+
+# UL2 two gpu mapping
+MODULES_ON_FIRST_GPU = [
+    'shared','decoder.embed_tokens', 'encoder', 'lm_head', 'decoder.block.0', 'decoder.block.1', 'decoder.block.2',
+]
+
+MODULES_ON_SECOND_GPU = [
+     'decoder.block.3', 'decoder.block.4', 'decoder.block.5', 'decoder.block.6', 'decoder.block.7', 'decoder.block.8', 'decoder.block.9', 'decoder.block.10', 'decoder.block.11', 'decoder.block.12', 'decoder.block.13', 'decoder.block.14', 'decoder.block.15', 'decoder.block.16', 'decoder.block.17', 'decoder.block.18', 'decoder.block.19', 'decoder.block.20', 'decoder.block.21', 'decoder.block.22', 'decoder.block.23', 'decoder.block.24', 'decoder.block.25', 'decoder.block.26', 'decoder.block.27', 'decoder.block.28', 'decoder.block.29', 'decoder.block.30', 'decoder.block.31', 'decoder.final_layer_norm', 'decoder.dropout'
+]
+
+def get_ul2_device_map(device_ids:str):
+    device_ids = device_ids.split(',')
+    # to int
+    device_ids = [int(x) for x in device_ids]
+    if len(device_ids) != 2:
+        raise ValueError(f"len(device_ids) != 2")
+    else:
+        device_map = {}
+        for module in MODULES_ON_FIRST_GPU:
+            device_map[module] = device_ids[0]
+        for module in MODULES_ON_SECOND_GPU:
+            device_map[module] = device_ids[1]
+        return device_map
+
+
+
 # Function to get processes from nvidia-smi
 def get_gpu_processes(gpu_id):
     result = subprocess.run(['nvidia-smi', '--id=' + gpu_id, '--query-compute-apps=pid', '--format=csv,noheader'], capture_output=True, text=True)
@@ -52,3 +79,5 @@ def to_tensor(data: Dict[Any, List[np.ndarray]]) -> Dict[Any, List[Tensor]]:
         ]
         for key, array_list in data.items()
     }
+
+
