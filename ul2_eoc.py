@@ -1,324 +1,622 @@
+# %% [markdown]
+# This code uses UL2 to 
+# 
+# (1) measure inconsistencies in its bidirectional conditionals; 
+# 
+# (2) improve llm inference with Emsemble of Conditionals.  
+# 
+# 
+
+# %% [markdown]
+# ### Imports and global utils
+
 # %%
-from transformers import T5ForConditionalGeneration, AutoTokenizer
-import torch
+'''imports'''
 import os
+# os.environ["CUDA_VISIBLE_DEVICES"]="0,1,4,5,6,7"
+os.environ["CUDA_VISIBLE_DEVICES"]="2,3"
+import general_utils
+# clear GPU memory
+if False:   
+    general_utils.kill_gpu_process(os.environ["CUDA_VISIBLE_DEVICES"])
+import torch
+from transformers import T5ForConditionalGeneration, AutoTokenizer, T5Tokenizer
 import numpy as np
 import pickle
 import time
 from tqdm import tqdm
-
-model = T5ForConditionalGeneration.from_pretrained("google/ul2", cache_dir='/work/09127/tomyoung/ls6/LLM_cache/google-ul2/', low_cpu_mem_usage=True, torch_dtype=torch.bfloat16).to("cuda")
-model.parallelize()                                                                                                  
-tokenizer = AutoTokenizer.from_pretrained("google/ul2")
-
-# %%
-# /work/09127/tomyoung/ls6/glm/GLM-130B/evaluation_data/evaluation/lambada/lambada/please_next_word/gen/test.jsonl
 import json
-import os
-with open("/work/09127/tomyoung/ls6/glm/GLM-130B/evaluation_data/evaluation/lambada/lambada/please_next_word/gen/test.jsonl", "r") as f:
-    data = [json.loads(line) for line in f.readlines()]
-# append [NLG] to the beginning of each input, and <extra_id_0> to the end
-data_appended = [{"inputs_pretokenized": "[NLG] " + x['inputs_pretokenized'] + " <extra_id_0>", "targets_pretokenized": x['targets_pretokenized']} for x in data]
+import lambada_utils
+from lambada_utils import LambadaOutputProcessor
+
+
+# %% [markdown]
+# ### Load tokenizer and model
 
 # %%
-from string import punctuation as PUNCTUATIONS
-PUNCTUATIONS_LIST = list(PUNCTUATIONS)
-PUNCTUATIONS_LIST.remove("<")
-PUNCTUATIONS_LIST.remove(">")
-PUNCTUATIONS_LIST.remove("_")
-PUNCTUATION_IDS_LIST = [tokenizer.get_vocab()[p] for p in PUNCTUATIONS_LIST if p in tokenizer.get_vocab()]
-for i in range(len(PUNCTUATION_IDS_LIST)):
-    print(PUNCTUATION_IDS_LIST[i])
-    print(tokenizer.decode(PUNCTUATION_IDS_LIST[i]))
+# We are using custom huggingface cache dirs in case the default one doesn't have the capacity, since the models can be quite large.
+MY_HUGGINGFACE_CACHE_DIR ='huggingface_cache' # relative to this notebook path
+tokenizer = AutoTokenizer.from_pretrained("google/ul2",
+                                        cache_dir = MY_HUGGINGFACE_CACHE_DIR+'/google-ul2')
 
 
 # %%
-def get_words_from_options(options):
-    '''Get the first word from each of the given options. Return the words.'''
-    # if a punctuation can be found in the option, get the word before the punctuation
-    words = []
-    for option in options:
-        # find the punctuation
-        for i in range(len(option)):
-            if option[i] in PUNCTUATIONS_LIST:
-                word = option[:i]
-                words.append(word)
-                # print(words)
-                break
-
-    # if the word starts with <pad>, remove it
-    words = [word[5:] if word.startswith("<pad>") else word for word in words]
-
-    # check it it the case that, assert that if the word starts with <extra_id_0>, ' ' follows. print the word if it is not the case
-    for word in words:
-        if word.startswith("<extra_id_0>") and len(word) > 13:
-            if word[12] != " ":
-                print('word[12] != \" \"')
-                print(word)
-
-    # if the word starts with <extra_id_0>, remove it
-    words = [word[12:] if word.startswith("<extra_id_0>") else word for word in words]
-    # if the word starts with ' ', remove it
-    words = [word[1:] if word.startswith(" ") else word for word in words]
-    # if the word ends with ' ', remove it
-    words = [word[:-1] if word.endswith(" ") else word for word in words]
-    # if the word is empty, remove it
-    words = [word for word in words if word != ""]
-    # if there are multiple words in word, remove it
-    words = [word for word in words if len(word.split(" ")) == 1]
-    return words
+# device_map = general_utils.get_ul2_device_map('0,1')
+# device_map="balanced"
+model = T5ForConditionalGeneration.from_pretrained("google/ul2", 
+                                                   cache_dir=MY_HUGGINGFACE_CACHE_DIR + '/google-ul2', 
+                                                   low_cpu_mem_usage=True, 
+                                                   torch_dtype=torch.bfloat16,
+                                                   device_map='cuda:0')
 
 # %%
-def get_word_from_option(option):
-    '''Get the first word from the given option. Return the word.'''
-    found = False
-    # if a punctuation can be found in the option, get the word before the punctuation
-    for i in range(len(option)):
-        if option[i] in PUNCTUATIONS_LIST:
-            word = option[:i]
-            found = True
-            break
-    if not found:
-        return None
+# device_map=general_utils.get_ul2_device_map('2,3')
+RUN_CELL = 0
+if RUN_CELL:
+    model1 = T5ForConditionalGeneration.from_pretrained("google/ul2",
+                                                        cache_dir=MY_HUGGINGFACE_CACHE_DIR + '/google-ul2',
+                                                        low_cpu_mem_usage=True,
+                                                        torch_dtype=torch.bfloat16,
+                                                        device_map='cuda:1')
 
-    # if the word starts with <pad>, remove it
-    word = word[5:] if word.startswith("<pad>") else word
-
-    # check it it the case that, assert that if the word starts with <extra_id_0>, ' ' follows. print the word if it is not the case
-    if word.startswith("<extra_id_0>") and len(word) > 13:
-        if word[12] != " ":
-            print('word[12] != \" \"')
-            print(word)
-
-    # if the word starts with <extra_id_0>, remove it
-    word = word[12:] if word.startswith("<extra_id_0>") else word
-    # if the word starts with ' ', remove it
-    word = word[1:] if word.startswith(" ") else word
-    # if the word ends with ' ', remove it
-    word = word[:-1] if word.endswith(" ") else word
-    # if the word is empty, remove it
-    word = word if word != "" else None
-    # if there are multiple words in word, remove it
-    if word:
-        word = word if len(word.split(" ")) == 1 else None
-    return word
+# %% [markdown]
+# ### Ensemble of Conditionals
 
 # %%
-def get_word_punc_pairs(options):
-    '''given a list of options (completions by the LLM), return a list of word-punc pairs'''
-    # print(options)
-    # if a punctuation can be found in the option, get the word before the punctuation
-    words = []
-    for option in options:
-        # find the punctuation
-        for i in range(len(option)):
-            if option[i] in PUNCTUATIONS_LIST:
-                word = option[:i+1]
-                words.append(word)
-                # print(words)
-                break
-    
-    # if the word starts with <pad>, remove the <pad>
-    words = [word[5:] if word.startswith("<pad>") else word for word in words]
-    # if the word starts with <extra_id_0>, remove the <extra_id_0>
-    words = [word[12:] if word.startswith("<extra_id_0>") else word for word in words]
-    # if the word starts with ' ', remove it
-    words = [word[1:] if word.startswith(" ") else word for word in words]
-    # if the word ends with ' ', remove it
-    words = [word[:-1] if word.endswith(" ") else word for word in words]
-    # if the word is empty, remove it
-    words = [word for word in words if word != ""]
-    # if there are multiple words in word, remove it
-    words = [word for word in words if len(word.split(" ")) == 1]
-    # if the length is 1, remove it (to prevent the case where it is just a punctuation)
-    words = [word for word in words if len(word) > 1]
-    # if the word contains <unk>, remove it
-    words = [word for word in words if "<unk>" not in word]
-    return list(set(words))
+# instantiate the lambada processor
+LAMBADA_TEST_DATA_PATH = "data/jsonls/test.jsonl"
+UL2_MODE = "[NLG]"
+processor = LambadaOutputProcessor(tokenizer, ul2_mode=UL2_MODE, lambada_test_set_path=LAMBADA_TEST_DATA_PATH)
+lambada = processor.dataset
+
+ce_loss = torch.nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id) #reduction='avg'
+ce_loss_sum = torch.nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id, reduction='sum') #reduction='sum'
+
+# %% [markdown]
+# Strategy for different punctuations
+# <details>
+# <summary>click to expand</summary>
+# 
+# In the LAMBADA last word prediction task, natural language models (LLMs) may append various punctuations to the same last word, leading to different completions. For example, to complete the sentence "My color of my pet dog is":
+# 
+# Possible Completions:
+# 
+# 1. _white._ with probability `p_1`
+# 2. _white!_ with probability `p_2` (assuming `p_1 > p_2`)
+# 3. _black,_ with probability `p_3`
+# 4. _black?_ with probability `p_4` (assuming `p_3 > p_4`)
+# 
+# Strategies to Rank _white_ and _black_:
+# 
+# 1. Maximum Probability Strategy
+# 
+# - Probability of _white_: `p(white) = p_1`
+# - Probability of _black_: `p(black) = p_3`
+# 
+# 2. Sum of Probabilities Strategy
+# 
+# - Probability of _white_: `p(white) = p_1 + p_2`
+# - Probability of _black_: `p(black) = p_3 + p_4`
+# 
+# Afterwards `p(_white_)` and `p(_black_)` may need normalization.
 
 # %%
-def remove_pad(options):
-    '''given a list of options (completions by the LLM), remove the <pad>'''
-    # if the word starts with <pad>, remove the <pad>
-    options = [option[5:] if option.startswith("<pad>") else option for option in options]
-    return options
+'''Generate the top completions (through beam search) for each example, and get the word from each completion.'''
+RUN_BEAM_SEARCH_CELL = False
+if RUN_BEAM_SEARCH_CELL:
+    # generate for all examples, and then get the words from the completions, and compare the first one with the target
+    count_correct = 0 # No. correct last word predictions if only the top completion is considered
+    count_correct_top_num_beams = 0 # ... if the top num_beams completions are considered
+    count_no_words_found = 0  # No. examples where no valid last word is found
 
-# %%
-def remove_pad_id(options):
-    '''given a list of options of ids (completions by the LLM), remove the <pad>'''
-    pad_id = tokenizer.convert_tokens_to_ids("<pad>")
-    # if the word starts with <pad>, remove the <pad>
-    options_return = []
-    for option in options:
-        if option[0] == pad_id:
-            options_return.append(option[1:])
+    # punctuated_word: the last word and the punctuation that follows it
+    id_to_punctuated_words = {} # maps example index to a list of word and punc pairs; every punc is kept for each word
+    id_to_punctuated_words_unique = {} # ...; every punc is kept for each word  
+    id_to_completions_ids = {}
+
+    MAX_COMPLETION_LENGTH = 8 # for last word prediction, 8 is sufficient
+    NUM_BEAMS = 20 # 20 is sufficient; more doesn't help
+
+    # for example_index in tqdm(range(10)): # len(lambada)
+    for example_index in tqdm(range(len(lambada))): # len(lambada)
+        input_string = lambada[example_index]['inputs_pretokenized']
+        inputs = tokenizer(input_string, return_tensors="pt").input_ids.to("cuda")
+        outputs = model.generate(inputs,
+                                max_length=MAX_COMPLETION_LENGTH, 
+                                num_beams=NUM_BEAMS, 
+                                num_return_sequences=NUM_BEAMS, 
+                                output_scores=True,
+                                eos_token_id=tokenizer.convert_tokens_to_ids('<extra_id_1>'), 
+                                return_dict_in_generate=True)
+        
+        completions = [tokenizer.decode(outputs['sequences'][i]) for i in range(NUM_BEAMS)]
+        completions_ids = [
+            outputs['sequences'][i].cpu()
+            for i in range(NUM_BEAMS)
+            if processor.get_word_from_completion(completions[i]) is not None # if the completion has a valid last word
+        ]
+
+        words = processor.get_words_from_completions(completions)
+
+        # TODO: combine them and move to utils.py
+        completions_without_pad = processor.remove_pad_id(completions_ids)
+        completions_without_pad_before_punctution = processor.before_first_punc(completions_without_pad)
+        
+        
+        if words:
+            if words[0] == lambada[example_index]['targets_pretokenized'][0]:
+                count_correct += 1
         else:
-            options_return.append(option)
-    return options_return
+            count_no_words_found += 1
+            # print("no words found")
+        punctuated_words = processor.get_punctuated_words(completions)
+        id_to_punctuated_words[example_index] = punctuated_words
+        words_unique = list(set(words))
+        id_to_punctuated_words_unique[example_index] = []
+        
+        id_to_completions_ids[example_index] = completions_without_pad_before_punctution
 
-# %%
-def before_first_punc(options):
-    options_return = []
-    for option in options:
-        for i in range(len(option)):
-            if option[i] in PUNCTUATION_IDS_LIST:
-                options_return.append(option[:i+1])
+        # find the best punctuatuation for each unique word (Maximum Probability Strategy, 
+        # completions are naturally ordered by probs by generate()) TODO: move this for loop to utils.py
+        for word in words_unique:
+            found = 0
+            # iterate through the word and punc pairs, and find the one that matches the word
+            for punctuated_word in punctuated_words:
+                # it is a match if pair = word + punc
+                ENDING_PUNCTUATIONS = ',!.:;?'
+                for punc in ENDING_PUNCTUATIONS:
+                    if punctuated_word == word + punc:
+                        id_to_punctuated_words_unique[example_index].append(punctuated_word)
+                        found = 1
+                        break
+                if found == 1:
+                    break
+        
+        # calculate the number of correct top num_beams: if the correct word is in the top num_beams, then it is correct
+        for word in words_unique:
+            if word == lambada[example_index]['targets_pretokenized'][0]:
+                count_correct_top_num_beams += 1
                 break
-    return options_return
+    print("count_correct", count_correct)
+# count_correct, NLU: 0.7595
+# count_correct, NLG: 0.7680
+# count_correct, S2S: 0.3743 (could be because how the mode handles extra_ids)
+
 
 # %%
-from tqdm import tqdm
-# cross entroy loss with logits and labels
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id) #reduction='sum'
-# loss = loss_fn(logits.view(-1, logits.shape[-1]), labels.view(-1))
-# loss
+'''Save the beam search results by generate()'''
+RUN_SAVE_BEAM_SEARCH_RESULTS_CELL = False
+if RUN_SAVE_BEAM_SEARCH_RESULTS_CELL:
+    timed_pickle_filename = 'data/pkls/' + UL2_MODE + '_ul2_lambada_vanilla_beam_search_results_' + general_utils.get_time() + '.pickle'
+    print(timed_pickle_filename)
 
+    data_keys = ['count_correct', 'count_correct_top_num_beams', 'count_no_words_found',
+                'id_to_punctuated_words', 'id_to_punctuated_words_unique', 'id_to_completions_ids']
+    data = {}
+    for key in data_keys:
+        data[key] = locals()[key]
 
+    with open(timed_pickle_filename, 'wb') as fp:
+        pickle.dump(data, fp)
 
-# load it back
-# /work/09127/tomyoung/ls6/inconsistencies_project/ul2_lambada_vanilla_beam_search_results_1683476272.4741185.pickle
-timed_pickle_file_name = '/work/09127/tomyoung/ls6/inconsistencies_project/ul2_lambada_vanilla_beam_search_results_1683476272.4741185.pickle'
-with open(timed_pickle_file_name, 'rb') as fp:
+# %%
+'''Load the beam search results'''
+timed_pickle_filename = 'data/pkls/ul2_lambada_vanilla_beam_search_results_2023-11-11 20:08:17.pickle'
+with open(timed_pickle_filename, 'rb') as fp:
     ul2_lambada_vanilla_beam_search_results = pickle.load(fp)
+id_to_completions_ids = ul2_lambada_vanilla_beam_search_results['id_to_completions_ids']
+
+# %% [markdown]
+# K-offset Ensemble
+# <details>
+# <summary>Click to expand</summary>
+# 
+# __K-offset Ensemble__ is a particular type of __Ensemble of Conditionals__ for last word prediction tasks like lambada.
+# 
+# It aims to augment the only conditional distribution obtained by masking the last word with more distributions. The new distributions are obtained by masking the last __offset__ + 1 words.
+# 
+# An example with the _lambada[0]_
+# 
+# _lambada[0]['input_pretokenized']_: `... his mouth curved in a confident grin , i do n't care about <last_word>`
+# 
+# We consider candidates `['angels.', 'signs.', 'that.']`.
+# 
+# The baseline approach is to input `... his mouth curved in a confident grin , i do n't care about <extra_id_0>` to UL2 and obtain the distribution containing the 3 candidates.
+# 
+# For the offset=1 case in K-offset Ensemble, we mask an extra token `about` in the end and input instead
+# 
+# `... his mouth curved in a confident grin , i do n't care <extra_id_1>`
+# 
+# This gives us a different distribution regarding `['about angels.', 'about signs.', 'about that.']`. They are given in an autoregressive manner
+# e.g., `p(about angels) = p(about) * p(angels|about)`. Therefore we will use conditionals in the style of `p(angels|about)` to augment the baseline conditionals.
+# 
+# Cases where __K__ is larger can be similarly derived.
+# 
+# 
+# 
 
 # %%
-id_to_options = {}
-for key in ul2_lambada_vanilla_beam_search_results['id_to_options_numpy']:
-    options = []
-    for option in ul2_lambada_vanilla_beam_search_results['id_to_options_numpy'][key]:
-        options.append(torch.from_numpy(option).to("cuda"))
-    id_to_options[key] = options
+MAX_OFFSET = 5
 
 # %%
-def get_avg_log_p_of_option_without_pad(inputs_pretokenized, option, offset=0):
-    # input_ids: 1*len = words + 32099 + 1
-    input_ids = tokenizer(inputs_pretokenized, return_tensors="pt").input_ids.to("cuda")
-    # labels: 1*len = 32099 + words
-    labels = option.unsqueeze(0).to("cuda")
-    # print('input_ids', input_ids)
-    # print('labels', labels)
-    # when offset is used, we move the last offset from input_ids to the front of labels.
-    if offset != 0:
-        to_move = input_ids[0][-offset-2:-2]
-        labels = torch.cat((labels[0][0].unsqueeze(0), to_move, labels[0][1:]), dim=0).unsqueeze(0)
-        input_ids = torch.cat((input_ids[0][:-offset-2], input_ids[0][-2:]), dim=0).unsqueeze(0)
-    # print('input_ids offset', input_ids)
-    # print('labels offset', labels)
-    outputs = model(input_ids, labels=labels)
-    return -outputs.loss, outputs.logits
+'''Generate the offset samples''' 
+RUN_CELL = 0
+if RUN_CELL:
+    id_and_offset_to_inputs_and_completions = \
+        processor.get_offset_samples(
+            ul2_lambada_vanilla_beam_search_results['id_to_completions_ids'], 
+            max_offset=MAX_OFFSET,
+            to_gpu=True
+        )
 
 # %%
-def get_offsetted(inputs_pretokenized, option, offset=0):
-    # input_ids: 1*len = words + 32099 + 1
-    input_ids = tokenizer(inputs_pretokenized, return_tensors="pt").input_ids.to("cuda")
-    # labels: 1*len = 32099 + words
-    labels = option.unsqueeze(0).to("cuda")
-    # print('input_ids', input_ids)
-    # print('labels', labels)
-    # when offset is used, we move the last offset from input_ids to the front of labels.
-    if offset != 0:
-        to_move = input_ids[0][-offset-2:-2]
-        labels = torch.cat((labels[0][0].unsqueeze(0), to_move, labels[0][1:]), dim=0)
-        input_ids = torch.cat((input_ids[0][:-offset-2], input_ids[0][-2:]), dim=0)
-    else:
-        # squeeze the batch dimension
-        labels = labels[0]
-        input_ids = input_ids[0]
-    # print('input_ids offset', input_ids)
-    # print('labels offset', labels)
-    return (input_ids, labels)
+'''Save the offset samples'''
+RUN_CELL = 0
+if RUN_CELL:    
+    timed_pickle_filename = 'data/pkls/offset_samples_' + 'parallel_' + 'max_offset_' + str(MAX_OFFSET) + '_' + general_utils.get_time() + '.pickle'
+    print(timed_pickle_filename)
+    with open(timed_pickle_filename, 'wb') as fp:
+        pickle.dump(id_and_offset_to_inputs_and_completions, fp)
 
 # %%
-''''obtain the offsetted input_ids and labels for each option for each id'''
-id_and_offset_to_input_and_options = {}
-max_offset = 61
-for id in tqdm(range(len(id_to_options))): #len(id_to_options)
-    # # offset = 0
-    # id_to_offset_to_input_and_options[(id, 0)] = []
-    # for option in id_to_options[id]:
-    #     id_to_offset_to_input_and_options[(id, 0)].append(get_offsetted(data_appended[id]['inputs_pretokenized'], option, offset=0))
-    # print(id_to_offset_to_input_and_options[(id, 0)])
-    # print('---------------')
-    # print('id:', id)
-    for offset in range(max_offset):
-        # print('offset:', offset)
-        id_and_offset_to_input_and_options[(id, offset)] = []
-        for option in id_to_options[id]:
-            id_and_offset_to_input_and_options[(id, offset)].append(get_offsetted(data_appended[id]['inputs_pretokenized'], option, offset=offset))
-            # print(get_offsetted(data_appended[id]['inputs_pretokenized'], option, offset=offset))
-            # print('---------------')
+'''Load the offset samples'''
+RUN_CELL = 0
+if RUN_CELL:
+    timed_pickle_filename = 'data/pkls/offset_samples_parallel_max_offset_5_2023-11-21-20:01:12.pickle'
+    with open(timed_pickle_filename, 'rb') as fp:
+        id_and_offset_to_inputs_and_completions = pickle.load(fp)
 
 # %%
-def get_avg_log_p_of_option_without_pad_batch(inputs_pretokenized_batch, options_batch):
-    # input_ids: batch_size*len = words + 32099 + 1
-    input_ids = tokenizer(inputs_pretokenized_batch, return_tensors="pt", padding=True).input_ids.to("cuda")
-    labels = options_batch.to("cuda")
-    outputs = model(input_ids, labels=labels)
-    return -outputs.loss, outputs.logits
-
-# %%
-''' obtain the avg_log_ps '''
-import traceback
-import datetime
-
-id_and_offset_to_option_probs = dict()
-failed_example_indices = []
-for example_index in tqdm(range(len(data_appended))): # len(data_appended)
-    try:
-        if len(id_to_options[example_index]) == 0:  
+'''Obtain the avg_log_p_map '''
+RUN_CELL = 0
+if RUN_CELL:
+# id_and_offset_to_input_and_completions:
+# (id, offset) -> input_ids, [completion_ids_0, completion_ids_1, completion_ids_2,...]
+    avg_log_p_map = dict() # (id, offset, completion_index) -> avg_log_p of the tokens constituting the last word (might be punctuated)
+    
+    # for example_index in tqdm(range(len(lambada))): 
+    for example_index in tqdm(range(1)): 
+        if len(id_to_completions_ids[example_index]) == 0:
             continue
-        for offset in range(max_offset):
-            options_batch = torch.nn.utils.rnn.pad_sequence([id_and_offset_to_input_and_options[(example_index, offset)][i][1] for i in range(len(id_to_options[example_index]))], batch_first=True, padding_value=tokenizer.pad_token_id)
-            input_ids_batch = torch.cat([id_and_offset_to_input_and_options[(example_index, offset)][i][0].unsqueeze(0) for i in range(len(id_to_options[example_index]))], dim=0)
-            outputs = model(input_ids_batch, labels=options_batch)
-            for option_index in range(len(id_to_options[example_index])):
-                avg_log_p = -loss_fn(outputs.logits[option_index][1+offset:], options_batch[option_index][1+offset:]) # [1:] to remove the first token <extra_id_0>
-                id_and_offset_to_option_probs[(example_index, offset, option_index)] = avg_log_p.detach().cpu().tolist()
+        for offset in range(MAX_OFFSET):
+            completions_batch = id_and_offset_to_inputs_and_completions[(example_index, offset)]['labels']
+            input_ids = id_and_offset_to_inputs_and_completions[(example_index, offset)]['inputs'].unsqueeze(0)
+            outputs = lambada_utils.multi_labels_forward(model, input_ids, completions_batch)
+
+            for completion_index in range(len(id_to_completions_ids[example_index])):
+                avg_log_p = -ce_loss(
+                    # Only care about the tokens corresponding to the last word and omit offset tokens 
+                    # the first one is <extra_id_0> and omitted
+                    outputs.logits[completion_index][1+offset:], 
+                    completions_batch[completion_index][1+offset:]
+                )
+                avg_log_p_map[(example_index, offset, completion_index)] = \
+                    avg_log_p.detach().cpu().tolist()
+
+# %%
+'''Save the avg_log_p_map'''
+RUN_SAVE_AVG_LOG_P_MAP_CELL = 0
+if RUN_SAVE_AVG_LOG_P_MAP_CELL:
+    pickle_filename = 'data/pkls/avg_log_p_map_' + 'max_offset_' + str(MAX_OFFSET) + '_' + general_utils.get_time() + '.pickle'
+    print(pickle_filename)
+    with open(pickle_filename, 'wb') as handle:
+        pickle.dump(avg_log_p_map, handle)
+
+# %%
+'''Load the avg_log_p_map'''
+RUN_CELL = 0
+if RUN_CELL:
+    pickle_filename = 'data/pkls/avg_log_p_map_max_offset_5_2023-11-21-21:17:58.pickle'
+    # pickle_filename = 'data/pkls/avg_log_p_map_max_offset_5_2023-11-15-04:12:17.pickle'
+    # avg_log_p_map (Dict): (id, offset, completion_index) -> avg_log_p of the tokens constituting the last word (might be punctuated)
+    with open(pickle_filename, 'rb') as handle:
+        avg_log_p_map = pickle.load(handle)
+
+# %%
+'''Max reduction to emsemble the K different conditionals for the same last word, 
+i.e., only the maximum avg_log_p is kept for each last word across different offsets. 
+'''
+# We test K-offset ensemble for K up to MAX_OFFSET_TEST; MAX_OFFSET_TEST should be <= MAX_OFFSET used during avg_log_p_map generation
+RUN_CELL = 0
+if RUN_CELL:
+    MAX_OFFSET_TEST = 5
+    offset_to_accuracy = dict()
+    for offset_test in range(MAX_OFFSET_TEST):
+        count_correct = 0 # No. correct last word predictions with K-offset
+        # Get the best completion based on avg_log_p_map
+        for example_index in tqdm(range(len(lambada))): # len(lambada)
             
-            # allocated_memory_bytes = torch.cuda.memory_allocated()
-            # # Convert the allocated memory to gigabytes
-            # allocated_memory_gb = allocated_memory_bytes / (1024 ** 3)
-            # print(f"Current GPU memory allocation: {allocated_memory_gb} GB")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        print('example_index:', example_index, ' failed')
-        failed_example_indices.append(example_index)
-        traceback.print_exc()
-
-# save avg_log_ps into a pickle file with timestamp
-timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-with open(f'id_and_offset_to_option_probs_{timestamp}_max_offset_{max_offset}.pickle', 'wb') as handle:
-    pickle.dump(id_and_offset_to_option_probs, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-# %%
-failed_example_indices
-# save failed_example_indices into a pickle file with timestamp
-with open(f'failed_example_indices_{timestamp}_{max_offset}.pickle', 'wb') as handle:
-    pickle.dump(failed_example_indices, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            # Create a list of tuples (avg_log_p, completion) for each completion
+            avg_log_p_and_completion = [
+                (avg_log_p_map[(example_index, offset, completion_index)], id_to_completions_ids[example_index][completion_index])
+                for offset in range(offset_test + 1)
+                for completion_index in range(len(id_to_completions_ids[example_index]))
+            ]
+            if len(avg_log_p_and_completion) == 0:
+                continue
+            # Find the tuple with the maximum avg_log_p; this is essentially max reduction
+            best_avg_log_p, best_completion = max(avg_log_p_and_completion, key=lambda x: x[0])
+            if processor.is_correct_completion(example_index, best_completion):
+                count_correct += 1
+        offset_to_accuracy[offset_test] = count_correct / (len(lambada))
+    print(offset_to_accuracy)
 
 # %%
-count_eoc = 0
-# postprocess the id_and_offset_to_option_probs to get the best option
-best_option =  ""
-for example_index in tqdm(range(len(data_appended))): # len(data_appended)
-    if len(id_to_options[example_index]) == 0 or example_index in failed_example_indices:
-        continue
-    option_avg_log_p_max = -10000000
-    best_option =  ""
-    for offset in range(0,1):
-        for option_index in range(len(id_to_options[example_index])):
-            avg_log_p = id_and_offset_to_option_probs[(example_index, offset, option_index)]
-            if avg_log_p > option_avg_log_p_max:
-                option_avg_log_p_max = avg_log_p
-                best_option = id_to_options[example_index][option_index]
+''' Quantify disagreement on last word predictions among K-offset conditionals '''
+RUN_CELL = 0
+if RUN_CELL:
+    for NUM_CONDITIONALS in range(2, 6): # 2, 3, 4, 5; how many sets of conditionals to consider; offset = 0 and offset = 1 are 2 different sets of conditionals
+        id_offset_to_lastword = dict()
+        id_to_lastwords_by_offsets = dict()
+        for offset in range(NUM_CONDITIONALS): # if NUM_CONDITIONALS = 2, then offset = 0, 1
+            for example_index in range(len(lambada)): # len(lambada)
+                # Create a list of tuples (avg_log_p, completion) for each completion
+                avg_log_p_and_completion = [
+                    (avg_log_p_map[(example_index, offset, completion_index)], id_to_completions_ids[example_index][completion_index])
+                    for completion_index in range(len(id_to_completions_ids[example_index]))
+                ]
+                if len(avg_log_p_and_completion) == 0:
+                    continue
+                # Find the tuple with the maximum avg_log_p; this is essentially max reduction
+                best_avg_log_p, best_completion = max(avg_log_p_and_completion, key=lambda x: x[0])
+                lastword = processor.get_word_from_completion(tokenizer.decode(best_completion))
+                id_offset_to_lastword[(example_index, offset)] = lastword
+                if example_index not in id_to_lastwords_by_offsets:
+                    id_to_lastwords_by_offsets[example_index] = []
+                id_to_lastwords_by_offsets[example_index].append(lastword)
+        no_disagreement_count = 0
+        for example_index in id_to_lastwords_by_offsets:
+            if len(set(id_to_lastwords_by_offsets[example_index])) > 1:
+                no_disagreement_count += 1
+        ratio_disagreement = no_disagreement_count / (len(lambada) - ul2_lambada_vanilla_beam_search_results['count_no_words_found'])
+        print("NUM_CONDITIONALS", NUM_CONDITIONALS, "ratio_disagreement", ratio_disagreement)
 
-    best_option_string = tokenizer.decode(best_option)
-    print('best_option_string', best_option_string)
-    if get_words_from_options([best_option_string]) != []:
-        best_word = get_words_from_options([best_option_string])[0]
-        if best_word == data_appended[example_index]['targets_pretokenized'][0]:
-            count_eoc += 1
+# %% [markdown]
+# Middle-off ensemble (incomplete)
+# <details>
+# <summary>Click to expand</summary>
+# 
+# __Middle-off Ensemble__ is a particular type of __Ensemble of Conditionals__ for last word prediction tasks like lambada.
+# 
+# 
+# It aims to augment the only conditional distribution obtained by masking some additional words in the middle of the input for additional distributions. The new distributions are obtained by masking the last __offset__ + 1 words.
+# 
+# The key sample generation function is create_middle_off_sample() in lambada_utils, which is controlled by
+# `middle_span_length`: the length of the masked span in the middle
+# and 
+# `middle_to_end_gap`： the gap between the middle_span and the last word
+# 
+# 
+# An example with the _lambada[0]_
+# 
+# _lambada[0]['input_pretokenized']_: `... his mouth curved in a confident grin , i do n't care about <last_word>`
+# 
+# We consider candidates `['angels.', 'signs.', 'that.']`.
+# 
+# The baseline approach is to input `... his mouth curved in a confident grin , i do n't care about <extra_id_0>` to UL2 and obtain the distribution containing the 3 candidates.
+# 
+# 
+# 
+# completion_lengths = [
+#     id_and_offset_to_inputs_and_completions[example_index,0][completion_index][1].shape[0] - 1
+#     for example_index in range(len(lambada)) 
+#     for completion_index in range(len(id_and_offset_to_inputs_and_completions[example_index,0]))
+# ] 
+# np.mean(completion_lengths) == 3.8
+# 
+
+# %%
+# range_middle_span_length: range,
+# range_middle_to_end_gap: range,
+RANGE_MIDDLE_SPAN_LENGTH = [3]
+RANGE_MIDDLE_TO_END_GAP = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+# %%
+'''Generate the middle-off samples''' 
+# TODO: change it to one input with multiple completions
+RUN_CELL = 0
+if RUN_CELL:
+    # id_middlespan_gap_to_input_and_completions: maps (id, middle_span_length, middle_to_end_gap) to a input_ids(Tensor) and completion_ids(List[Tensor])
+    id_middlespan_gap_to_input_and_completions = \
+        processor.get_middle_off_samples(
+            id_to_completions_ids, 
+            range_middle_span_length=RANGE_MIDDLE_SPAN_LENGTH,
+            range_middle_to_end_gap=RANGE_MIDDLE_TO_END_GAP,
+            to_gpu=True
+        )
+
+# %%
+'''Save the middle-off samples'''
+RUN_CELL = 0
+if RUN_CELL:    
+    timed_pickle_filename = 'data/pkls/middle_off_samples_' + 'rmsl_' + str(RANGE_MIDDLE_SPAN_LENGTH[0]) + \
+        '_rmteg_1_10' + '_' + general_utils.get_time() + '.pickle'
+    print(timed_pickle_filename)
+    with open(timed_pickle_filename, 'wb') as fp:
+        pickle.dump(id_middlespan_gap_to_input_and_completions, fp)
+
+# %%
+'''Load the middle-off samples'''
+RUN_CELL = 1
+if RUN_CELL:
+    timed_pickle_filename = 'data/pkls/middle_off_samples_rmsl_3_rmteg_1_10_2023-11-25-20:48:49.pickle'
+    with open(timed_pickle_filename, 'rb') as fp:
+        id_middlespan_gap_to_input_and_completions = pickle.load(fp)
+
+# %%
+'''Obtain the avg_log_p_map for middle-off samples'''
+RUN_CELL = 1
+if RUN_CELL:
+    # id_middlespan_gap_to_input_and_completions: maps (id, middle_span_length, middle_to_end_gap) to a input_ids(Tensor) and completion_ids(List[Tensor])
+    # avg_log_p_map_middle_off: maps (id, middle_span_length, middle_to_end_gap, completion_index) to avg_log_p of the tokens constituting the last word (might be punctuated)
+    avg_log_p_map_middle_off = dict()
+    for id_middlespan_gap in tqdm(id_middlespan_gap_to_input_and_completions):
+        input_ids = id_middlespan_gap_to_input_and_completions[id_middlespan_gap]['inputs'].unsqueeze(0)
+        completions_batch = id_middlespan_gap_to_input_and_completions[id_middlespan_gap]['labels']
+        outputs = lambada_utils.multi_labels_forward(model, input_ids, completions_batch)
+
+        middlespan_length = id_middlespan_gap[1]
+
+        for completion_index in range(len(completions_batch)):
+            avg_log_p = -ce_loss(
+                # Only care about the tokens corresponding to the last word
+                outputs.logits[completion_index][2+middlespan_length:], 
+                completions_batch[completion_index][2+middlespan_length:]
+            )
+            avg_log_p_map_middle_off[(*id_middlespan_gap, completion_index)] = \
+                avg_log_p.detach().cpu().tolist()
+
+
+'''Save the avg_log_p_map_middle_off'''
+RUN_CELL = 1
+if RUN_CELL:
+    pickle_filename = 'data/pkls/avg_log_p_map_middle_off_' + 'rmsl_' + str(RANGE_MIDDLE_SPAN_LENGTH[0]) + \
+        '_rmteg_1_10' + '_' + general_utils.get_time() + '.pickle'
+    print(pickle_filename)
+    with open(pickle_filename, 'wb') as handle:
+        pickle.dump(avg_log_p_map_middle_off, handle)
+
+exit()
+
+
+# %%
+'''Obtain the avg_log_p_map for middle-off samples via data parallelism'''
+from multiprocessing import Process
+import multiprocessing
+avg_log_p_map_middle_off = dict()
+# define the processing for each id_middlespan_gap example as a function and use threading to use 3 models in parallel
+def process(list_id_middlespan_gap, model_, device='cuda:0'):
+    for id_middlespan_gap in tqdm(list_id_middlespan_gap):
+        input_ids = id_middlespan_gap_to_input_and_completions[id_middlespan_gap]['inputs'].unsqueeze(0).to(device)
+        completions_batch = id_middlespan_gap_to_input_and_completions[id_middlespan_gap]['labels'].to(device)
+        outputs = lambada_utils.multi_labels_forward(model_, input_ids, completions_batch)
+
+        middlespan_length = id_middlespan_gap[1]
+
+        for completion_index in range(len(completions_batch)):
+            avg_log_p = -ce_loss(
+                # Only care about the tokens corresponding to the last word and omit offset tokens 
+                # the first one is <extra_id_0> and omitted
+                outputs.logits[completion_index][2+middlespan_length:], 
+                completions_batch[completion_index][2+middlespan_length:]
+            )
+            avg_log_p_map_middle_off[(*id_middlespan_gap, completion_index)] = \
+                avg_log_p.detach().cpu().tolist()
+        
+# run the above function in parallel
+import threading
+multiprocessing.set_start_method('spawn')
+
+all_id_middlespan_gaps = list(id_middlespan_gap_to_input_and_completions.keys())
+all_id_middlespan_gaps_0 = all_id_middlespan_gaps[:len(all_id_middlespan_gaps)//2]
+all_id_middlespan_gaps_1 = all_id_middlespan_gaps[len(all_id_middlespan_gaps)//2:]
+# all_id_middlespan_gaps_2 = all_id_middlespan_gaps[2*len(all_id_middlespan_gaps)//3:]
+
+t0 = Process(target=process, args=(all_id_middlespan_gaps_0, model, 'cuda:0'))
+t1 = Process(target=process, args=(all_id_middlespan_gaps_1, model1, 'cuda:2'))
+# t2 = threading.Thread(target=process, args=(all_id_middlespan_gaps_2, model2, 'cuda:4'))
+
+t0.start()
+t1.start()
+# t2.start()
+
+# %% [markdown]
+# ### End of main code
+
+# %%
+''' Plot ensembled conditionals vs accuracy'''
+# %matplotlib inline
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+
+# Load a nice font
+font_path = '/usr/share/fonts/urw-base35/NimbusMonoPS-Italic.otf'
+font_prop = fm.FontProperties(fname=font_path)
+
+# offset = 0 corresponds to the baseline, which is no. ensembled conditionals = 1; adjust the offset by 1
+no_ensembled_conditionals_to_accuracy = dict()
+for offset in range(1, MAX_OFFSET_TEST+1):
+    no_ensembled_conditionals_to_accuracy[offset] = offset_to_accuracy[offset-1]
+
+
+max_line = plt.plot(list(no_ensembled_conditionals_to_accuracy.keys()), list(no_ensembled_conditionals_to_accuracy.values()), label='max')
+plt.xlabel('No. ensembled conditionals', fontsize=14)
+plt.ylabel('Accuracy', fontsize=14)
+# the interval on x should be 10
+plt.xticks(np.arange(10, max(list(no_ensembled_conditionals_to_accuracy.keys()))+1, 10))\
+# add a tick at 1 on the x axis
+plt.xticks(list(plt.xticks()[0]) + [1])
+
+plt.xticks(fontsize=13)
+plt.yticks(fontsize=13)
+
+# add a dot at each point
+plt.scatter(list(no_ensembled_conditionals_to_accuracy.keys()), list(no_ensembled_conditionals_to_accuracy.values()))
+
+
+# add a yellow horizontal line at y=offset_to_accuracy[0]
+plt.axhline(y=no_ensembled_conditionals_to_accuracy[1], color='y', linestyle='--')
+# add the word "baseline" at the end of the yellow line in the font of calibri
+plt.text(48, no_ensembled_conditionals_to_accuracy[1] + 0.0002, 'baseline', fontproperties=font_prop, fontsize=13)
+
+# # plot the accuracy with avg reduction
+# avg_line = plt.plot([item+1 for item in list(offset_to_accuracy_avg_reduction.keys())], list(offset_to_accuracy_avg_reduction.values()), color='r', label='avg')
+# # add a dot at each point
+# plt.scatter([item+1 for item in list(offset_to_accuracy_avg_reduction.keys())], list(offset_to_accuracy_avg_reduction.values()), color='r')
+
+plt.scatter(1, no_ensembled_conditionals_to_accuracy[1], color='y')
+
+plt.legend(handles=[max_line[0], avg_line[0]], loc='upper center', bbox_to_anchor=(0.9, 0.45), ncol=1, fontsize=10)
+
+
+plt.tight_layout()
+
+# show the plot at a high resolution
+# plt.savefig('no_ensembled_conditionals_to_accuracy_combined.png', dpi=1200)
+
+# plt.print()
+
+
+# %%
+import threading
+import time
+
+# A simple function that prints and sleeps
+def print_numbers(name):
+    for i in range(1, 6):
+        time.sleep(2)
+        print(f"{name} prints: {i}")
+
+# Creating threads
+thread1 = threading.Thread(target=print_numbers, args=("Thread 1",))
+thread2 = threading.Thread(target=print_numbers, args=("Thread 2",))
+
+# Starting threads
+thread1.start()
+thread2.start()
+
+# Waiting for threads to complete
+thread1.join()
+thread2.join()
+
+print("Threads finished execution")
+
+
+# %%
+import importlib
+import lambada_utils  # Import the module, not just the class
+importlib.reload(lambada_utils)
+from lambada_utils import LambadaOutputProcessor  # Re-import the class
+
+# %%
+import importlib
+import general_utils
+importlib.reload(general_utils)
+
+# %%
+model.hf_device_map.keys().__len__()
+
+# %%
+general_utils.get_ul2_device_map('6,7').__len__()
+
 
