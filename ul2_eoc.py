@@ -27,7 +27,7 @@ import time
 from tqdm import tqdm
 import json
 import lambada_utils
-from lambada_utils import LambadaOutputProcessor
+from lambada_utils import LambadaProcessor
 
 
 # %% [markdown]
@@ -41,17 +41,19 @@ tokenizer = AutoTokenizer.from_pretrained("google/ul2",
 
 
 # %%
+RUN_CELL = 1 # Load model 0
 # device_map = general_utils.get_ul2_device_map('0,1')
-# device_map="balanced"
-model = T5ForConditionalGeneration.from_pretrained("google/ul2", 
-                                                   cache_dir=MY_HUGGINGFACE_CACHE_DIR + '/google-ul2', 
-                                                   low_cpu_mem_usage=True, 
-                                                   torch_dtype=torch.bfloat16,
-                                                   device_map='cuda:0')
+device_map="balanced"
+if RUN_CELL:
+    model = T5ForConditionalGeneration.from_pretrained("google/ul2", 
+                                                    cache_dir=MY_HUGGINGFACE_CACHE_DIR + '/google-ul2', 
+                                                    low_cpu_mem_usage=True, 
+                                                    torch_dtype=torch.bfloat16,
+                                                    device_map=device_map)
 
 # %%
+RUN_CELL = 0 # Load model 1
 # device_map=general_utils.get_ul2_device_map('2,3')
-RUN_CELL = 0
 if RUN_CELL:
     model1 = T5ForConditionalGeneration.from_pretrained("google/ul2",
                                                         cache_dir=MY_HUGGINGFACE_CACHE_DIR + '/google-ul2',
@@ -63,10 +65,13 @@ if RUN_CELL:
 # ### Ensemble of Conditionals
 
 # %%
-# instantiate the lambada processor
-LAMBADA_TEST_DATA_PATH = "data/jsonls/test.jsonl"
+'''instantiate the lambada processor'''
+IS_DEVELOPMENT = True # Set to False to run on the test set
+set_partition = 'validation_' if IS_DEVELOPMENT else '' # filename part for saving results
+
+LAMBADA_TEST_DATA_PATH = "data/jsonls/validation.jsonl" if IS_DEVELOPMENT else "data/jsonls/test.jsonl"
 UL2_MODE = "[NLG]"
-processor = LambadaOutputProcessor(tokenizer, ul2_mode=UL2_MODE, lambada_test_set_path=LAMBADA_TEST_DATA_PATH)
+processor = LambadaProcessor(tokenizer, ul2_mode=UL2_MODE, lambada_dataset_path=LAMBADA_TEST_DATA_PATH)
 lambada = processor.dataset
 
 ce_loss = torch.nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id) #reduction='avg'
@@ -101,9 +106,8 @@ ce_loss_sum = torch.nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id, red
 # Afterwards `p(_white_)` and `p(_black_)` may need normalization.
 
 # %%
-'''Generate the top completions (through beam search) for each example, and get the word from each completion.'''
-RUN_BEAM_SEARCH_CELL = False
-if RUN_BEAM_SEARCH_CELL:
+RUN_CELL = 0 # '''Generate the top completions (through beam search) for each example, and get the word from each completion.'''
+if RUN_CELL:
     # generate for all examples, and then get the words from the completions, and compare the first one with the target
     count_correct = 0 # No. correct last word predictions if only the top completion is considered
     count_correct_top_num_beams = 0 # ... if the top num_beams completions are considered
@@ -178,16 +182,15 @@ if RUN_BEAM_SEARCH_CELL:
                 count_correct_top_num_beams += 1
                 break
     print("count_correct", count_correct)
-# count_correct, NLU: 0.7595
-# count_correct, NLG: 0.7680
-# count_correct, S2S: 0.3743 (could be because how the mode handles extra_ids)
+    # count_correct, NLU: 0.7595
+    # count_correct, NLG: 0.7680
+    # count_correct, S2S: 0.3743 (could be because how the mode handles extra_ids)
 
 
 # %%
-'''Save the beam search results by generate()'''
-RUN_SAVE_BEAM_SEARCH_RESULTS_CELL = False
-if RUN_SAVE_BEAM_SEARCH_RESULTS_CELL:
-    timed_pickle_filename = 'data/pkls/' + UL2_MODE + '_ul2_lambada_vanilla_beam_search_results_' + general_utils.get_time() + '.pickle'
+RUN_CELL = 0 # '''Save the beam search results by generate()'''
+if RUN_CELL:
+    timed_pickle_filename = 'data/pkls/' + set_partition + UL2_MODE + '_ul2_lambada_vanilla_beam_search_results_' + general_utils.get_time() + '.pickle'
     print(timed_pickle_filename)
 
     data_keys = ['count_correct', 'count_correct_top_num_beams', 'count_no_words_found',
@@ -201,7 +204,9 @@ if RUN_SAVE_BEAM_SEARCH_RESULTS_CELL:
 
 # %%
 '''Load the beam search results'''
-timed_pickle_filename = 'data/pkls/ul2_lambada_vanilla_beam_search_results_2023-11-11 20:08:17.pickle'
+# timed_pickle_filename = 'data/pkls/ul2_lambada_vanilla_beam_search_results_2023-11-11 20:08:17.pickle'
+timed_pickle_filename = 'data/pkls/validation_[NLG]_ul2_lambada_vanilla_beam_search_results_2023-11-29-22:45:19.pickle'
+
 with open(timed_pickle_filename, 'rb') as fp:
     ul2_lambada_vanilla_beam_search_results = pickle.load(fp)
 id_to_completions_ids = ul2_lambada_vanilla_beam_search_results['id_to_completions_ids']
@@ -236,11 +241,10 @@ id_to_completions_ids = ul2_lambada_vanilla_beam_search_results['id_to_completio
 # 
 
 # %%
-MAX_OFFSET = 5
+MAX_OFFSET = 15
 
 # %%
-'''Generate the offset samples''' 
-RUN_CELL = 0
+RUN_CELL = 0 # '''Generate the offset samples'''
 if RUN_CELL:
     id_and_offset_to_inputs_and_completions = \
         processor.get_offset_samples(
@@ -250,32 +254,30 @@ if RUN_CELL:
         )
 
 # %%
-'''Save the offset samples'''
-RUN_CELL = 0
+RUN_CELL = 0 # Save the offset samples
 if RUN_CELL:    
-    timed_pickle_filename = 'data/pkls/offset_samples_' + 'parallel_' + 'max_offset_' + str(MAX_OFFSET) + '_' + general_utils.get_time() + '.pickle'
+    timed_pickle_filename = 'data/pkls/offset_samples_' + set_partition + 'max_offset_' + str(MAX_OFFSET) + '_' + general_utils.get_time() + '.pickle'
     print(timed_pickle_filename)
     with open(timed_pickle_filename, 'wb') as fp:
         pickle.dump(id_and_offset_to_inputs_and_completions, fp)
 
 # %%
-'''Load the offset samples'''
-RUN_CELL = 0
+RUN_CELL = 1 # Load the offset samples
 if RUN_CELL:
-    timed_pickle_filename = 'data/pkls/offset_samples_parallel_max_offset_5_2023-11-21-20:01:12.pickle'
+    # timed_pickle_filename = 'data/pkls/offset_samples_parallel_max_offset_5_2023-11-21-20:01:12.pickle'
+    timed_pickle_filename = 'data/pkls/offset_samples_validation_max_offset_15_2023-11-30-00:27:00.pickle'
     with open(timed_pickle_filename, 'rb') as fp:
         id_and_offset_to_inputs_and_completions = pickle.load(fp)
 
 # %%
-'''Obtain the avg_log_p_map '''
-RUN_CELL = 0
+RUN_CELL = 1 # Obtain the avg_log_p_map_offset
 if RUN_CELL:
 # id_and_offset_to_input_and_completions:
 # (id, offset) -> input_ids, [completion_ids_0, completion_ids_1, completion_ids_2,...]
-    avg_log_p_map = dict() # (id, offset, completion_index) -> avg_log_p of the tokens constituting the last word (might be punctuated)
+    avg_log_p_map_offset = dict() # (id, offset, completion_index) -> avg_log_p of the tokens constituting the last word (might be punctuated)
     
-    # for example_index in tqdm(range(len(lambada))): 
-    for example_index in tqdm(range(1)): 
+    for example_index in tqdm(range(len(lambada))): 
+    # for example_index in tqdm(range(1)): 
         if len(id_to_completions_ids[example_index]) == 0:
             continue
         for offset in range(MAX_OFFSET):
@@ -290,45 +292,40 @@ if RUN_CELL:
                     outputs.logits[completion_index][1+offset:], 
                     completions_batch[completion_index][1+offset:]
                 )
-                avg_log_p_map[(example_index, offset, completion_index)] = \
+                avg_log_p_map_offset[(example_index, offset, completion_index)] = \
                     avg_log_p.detach().cpu().tolist()
 
 # %%
-'''Save the avg_log_p_map'''
-RUN_SAVE_AVG_LOG_P_MAP_CELL = 0
-if RUN_SAVE_AVG_LOG_P_MAP_CELL:
-    pickle_filename = 'data/pkls/avg_log_p_map_' + 'max_offset_' + str(MAX_OFFSET) + '_' + general_utils.get_time() + '.pickle'
+RUN_CELL = 1 # Save the avg_log_p_map_offset
+if RUN_CELL:
+    pickle_filename = 'data/pkls/avg_log_p_map_' + set_partition + 'max_offset_' + str(MAX_OFFSET) + '_' + general_utils.get_time() + '.pickle'
     print(pickle_filename)
     with open(pickle_filename, 'wb') as handle:
-        pickle.dump(avg_log_p_map, handle)
+        pickle.dump(avg_log_p_map_offset, handle)
 
 # %%
-'''Load the avg_log_p_map'''
-RUN_CELL = 0
+RUN_CELL = 0 # Load the avg_log_p_map for the offset samples
 if RUN_CELL:
-    pickle_filename = 'data/pkls/avg_log_p_map_max_offset_5_2023-11-21-21:17:58.pickle'
+    pickle_filename = 'data/pkls/avg_log_p_map_max_offset_30_2023-11-15-08:30:28.pickle'
     # pickle_filename = 'data/pkls/avg_log_p_map_max_offset_5_2023-11-15-04:12:17.pickle'
-    # avg_log_p_map (Dict): (id, offset, completion_index) -> avg_log_p of the tokens constituting the last word (might be punctuated)
+    # avg_log_p_map_offset (Dict): (id, offset, completion_index) -> avg_log_p of the tokens constituting the last word (might be punctuated)
     with open(pickle_filename, 'rb') as handle:
-        avg_log_p_map = pickle.load(handle)
+        avg_log_p_map_offset = pickle.load(handle)
 
 # %%
-'''Max reduction to emsemble the K different conditionals for the same last word, 
-i.e., only the maximum avg_log_p is kept for each last word across different offsets. 
-'''
+RUN_CELL = 0 # '''Max reduction to emsemble the K different conditionals for the same last word, i.e., only the maximum avg_log_p is kept for each last word across different offsets. 
 # We test K-offset ensemble for K up to MAX_OFFSET_TEST; MAX_OFFSET_TEST should be <= MAX_OFFSET used during avg_log_p_map generation
-RUN_CELL = 0
 if RUN_CELL:
-    MAX_OFFSET_TEST = 5
+    MAX_OFFSET_TEST = 9 
     offset_to_accuracy = dict()
-    for offset_test in range(MAX_OFFSET_TEST):
+    offset_to_correct_ids = dict()
+    for offset_test in range(MAX_OFFSET_TEST + 1):
         count_correct = 0 # No. correct last word predictions with K-offset
-        # Get the best completion based on avg_log_p_map
+        # Get the best completion based on avg_log_p_map_offset
         for example_index in tqdm(range(len(lambada))): # len(lambada)
-            
             # Create a list of tuples (avg_log_p, completion) for each completion
             avg_log_p_and_completion = [
-                (avg_log_p_map[(example_index, offset, completion_index)], id_to_completions_ids[example_index][completion_index])
+                (avg_log_p_map_offset[(example_index, offset, completion_index)], id_to_completions_ids[example_index][completion_index])
                 for offset in range(offset_test + 1)
                 for completion_index in range(len(id_to_completions_ids[example_index]))
             ]
@@ -338,13 +335,13 @@ if RUN_CELL:
             best_avg_log_p, best_completion = max(avg_log_p_and_completion, key=lambda x: x[0])
             if processor.is_correct_completion(example_index, best_completion):
                 count_correct += 1
+                offset_to_correct_ids.setdefault(offset_test, []).append(example_index)
         offset_to_accuracy[offset_test] = count_correct / (len(lambada))
     print(offset_to_accuracy)
 
 # %%
-''' Quantify disagreement on last word predictions among K-offset conditionals '''
-RUN_CELL = 0
-if RUN_CELL:
+RUN_CELL = 0 # Quantify disagreement on last word predictions among K-offset conditionals
+if RUN_CELL: 
     for NUM_CONDITIONALS in range(2, 6): # 2, 3, 4, 5; how many sets of conditionals to consider; offset = 0 and offset = 1 are 2 different sets of conditionals
         id_offset_to_lastword = dict()
         id_to_lastwords_by_offsets = dict()
@@ -352,7 +349,7 @@ if RUN_CELL:
             for example_index in range(len(lambada)): # len(lambada)
                 # Create a list of tuples (avg_log_p, completion) for each completion
                 avg_log_p_and_completion = [
-                    (avg_log_p_map[(example_index, offset, completion_index)], id_to_completions_ids[example_index][completion_index])
+                    (avg_log_p_map_offset[(example_index, offset, completion_index)], id_to_completions_ids[example_index][completion_index])
                     for completion_index in range(len(id_to_completions_ids[example_index]))
                 ]
                 if len(avg_log_p_and_completion) == 0:
@@ -406,15 +403,16 @@ if RUN_CELL:
 # 
 
 # %%
-# range_middle_span_length: range,
-# range_middle_to_end_gap: range,
+# define range_middle_span_length and range_middle_to_end_gap
 RANGE_MIDDLE_SPAN_LENGTH = [3]
 RANGE_MIDDLE_TO_END_GAP = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+LENGTH_GAP_TUPLES = [
+    (3, 1), (3, 2), (3, 3), (3, 4), (3, 5), 
+    (3, 6), (3, 7), (3, 8), (3, 9), (3, 10)
+]
 
 # %%
-'''Generate the middle-off samples''' 
-# TODO: change it to one input with multiple completions
-RUN_CELL = 0
+RUN_CELL = 1 # Generate the middle-off samples
 if RUN_CELL:
     # id_middlespan_gap_to_input_and_completions: maps (id, middle_span_length, middle_to_end_gap) to a input_ids(Tensor) and completion_ids(List[Tensor])
     id_middlespan_gap_to_input_and_completions = \
@@ -426,26 +424,23 @@ if RUN_CELL:
         )
 
 # %%
-'''Save the middle-off samples'''
-RUN_CELL = 0
+RUN_CELL = 1 # Save the middle-off samples
 if RUN_CELL:    
-    timed_pickle_filename = 'data/pkls/middle_off_samples_' + 'rmsl_' + str(RANGE_MIDDLE_SPAN_LENGTH[0]) + \
+    timed_pickle_filename = 'data/pkls/middle_off_samples_' + set_partition + 'rmsl_' + str(RANGE_MIDDLE_SPAN_LENGTH[0]) + \
         '_rmteg_1_10' + '_' + general_utils.get_time() + '.pickle'
     print(timed_pickle_filename)
     with open(timed_pickle_filename, 'wb') as fp:
         pickle.dump(id_middlespan_gap_to_input_and_completions, fp)
 
 # %%
-'''Load the middle-off samples'''
-RUN_CELL = 1
+RUN_CELL = 0 # '''Load the middle-off samples'''
 if RUN_CELL:
     timed_pickle_filename = 'data/pkls/middle_off_samples_rmsl_3_rmteg_1_10_2023-11-25-20:48:49.pickle'
     with open(timed_pickle_filename, 'rb') as fp:
         id_middlespan_gap_to_input_and_completions = pickle.load(fp)
 
 # %%
-'''Obtain the avg_log_p_map for middle-off samples'''
-RUN_CELL = 1
+RUN_CELL = 1 # Obtain and save the avg_log_p_map for middle-off samples
 if RUN_CELL:
     # id_middlespan_gap_to_input_and_completions: maps (id, middle_span_length, middle_to_end_gap) to a input_ids(Tensor) and completion_ids(List[Tensor])
     # avg_log_p_map_middle_off: maps (id, middle_span_length, middle_to_end_gap, completion_index) to avg_log_p of the tokens constituting the last word (might be punctuated)
@@ -465,60 +460,156 @@ if RUN_CELL:
             )
             avg_log_p_map_middle_off[(*id_middlespan_gap, completion_index)] = \
                 avg_log_p.detach().cpu().tolist()
-
-
-'''Save the avg_log_p_map_middle_off'''
-RUN_CELL = 1
-if RUN_CELL:
-    pickle_filename = 'data/pkls/avg_log_p_map_middle_off_' + 'rmsl_' + str(RANGE_MIDDLE_SPAN_LENGTH[0]) + \
+            
+    '''Save the avg_log_p_map_middle_off'''
+    pickle_filename = 'data/pkls/avg_log_p_map_middle_off_' + set_partition + 'rmsl_' + str(RANGE_MIDDLE_SPAN_LENGTH[0]) + \
         '_rmteg_1_10' + '_' + general_utils.get_time() + '.pickle'
     print(pickle_filename)
     with open(pickle_filename, 'wb') as handle:
         pickle.dump(avg_log_p_map_middle_off, handle)
-
 exit()
 
+# %%
+RUN_CELL = 1 # Load the avg_log_p_map_middle_off
+if RUN_CELL:
+    pickle_filename = 'data/pkls/avg_log_p_map_middle_off_rmsl_3_rmteg_1_10_2023-11-25-22:45:36.pickle'
+    with open(pickle_filename, 'rb') as handle:
+        avg_log_p_map_middle_off = pickle.load(handle)
+
+# %%
+'''Max reduction to emsemble middle-off conditionals for the same last word, 
+i.e., only the maximum avg_log_p is kept for each last word across different range_middle_span_length's and range_middle_to_end_gap's.
+Possibly emsemble with the K-offset conditionals.'''
+
+
+ADD_MIDDLE_OFF = True # ADD the middle-off ensemble to the list
+ADD_BASELINE = True # ADD the baseline (offset = 0 from K-offset ensemble) to the list
+ADD_K_OFFSET = False # ADD the whole K-offset ensemble to the list
+MAX_OFFSET = 9
+LENGTH_GAP_TUPLES =  [(3,5)]
+
+count_correct = 0
+correct_ids = []
+for example_index in tqdm(range(len(lambada))): # len(lambada)
+    # Create a list of tuples (avg_log_p, completion) for each completion
+    avg_log_p_and_completion = []
+    # add middle-off to the list
+    if ADD_MIDDLE_OFF:
+        avg_log_p_and_completion += [
+            (avg_log_p_map_middle_off[(example_index, middle_span_length, middle_to_end_gap, completion_index)], id_to_completions_ids[example_index][completion_index])
+            for middle_span_length, middle_to_end_gap in LENGTH_GAP_TUPLES
+            for completion_index in range(len(id_to_completions_ids[example_index]))
+        ]
+    # add the baseline (offset = 0 from K-offset ensemble) to the list
+    if ADD_BASELINE:
+        avg_log_p_and_completion += [
+            (avg_log_p_map_offset[(example_index, 0, completion_index)], id_to_completions_ids[example_index][completion_index])
+            for completion_index in range(len(id_to_completions_ids[example_index]))
+        ]
+        
+    # add the whole K-offset ensemble to the list
+    if ADD_K_OFFSET:
+        avg_log_p_and_completion += [
+            (avg_log_p_map_offset[(example_index, offset, completion_index)], id_to_completions_ids[example_index][completion_index])
+            for offset in range(1, MAX_OFFSET + 1)
+            for completion_index in range(len(id_to_completions_ids[example_index]))
+        ]
+
+    if len(avg_log_p_and_completion) == 0: # if no completions are found
+        continue
+    # Find the tuple with the maximum avg_log_p; this is essentially max reduction
+    best_avg_log_p, best_completion = max(avg_log_p_and_completion, key=lambda x: x[0])
+    if processor.is_correct_completion(example_index, best_completion):
+        count_correct += 1
+        correct_ids.append(example_index)
+print("count_correct:", count_correct)
+print("accuracy:", count_correct / len(lambada))
+
+
+# %% [markdown]
+# ### Notes
+# 
+#  Hypothesis: conditionals based on the mask patterns used during pretraining are more powerful;
+# 
+#  just ensemble with one LENGTH_GAP_TUPLE == (3,5) leads to accuracy: 0.7814865127110421
+# 
+# 
+
+# %%
+LENGTH_GAP_TUPLES[:1]
+
+# %%
+avg_log_p_and_completion
+
+# %%
+avg_log_p_and_completion
+
+# %%
+offset_to_correct_ids[9].__len__()
+
+# %%
+where_k_offset_helps = set(offset_to_correct_ids[9]) - set(offset_to_correct_ids[0])
+
+# %%
+where_middle_off_helps = set(correct_ids) - set(offset_to_correct_ids[0])
+
+# %%
+where_k_offset_helps.__len__()
+
+# %%
+where_middle_off_helps.__len__()
+
+# %%
+where_k_offset_helps.intersection(where_middle_off_helps).__len__()
+
+# %%
+(where_k_offset_helps - where_middle_off_helps).__len__()
+
+# %%
+(where_middle_off_helps - where_k_offset_helps).__len__()
 
 # %%
 '''Obtain the avg_log_p_map for middle-off samples via data parallelism'''
-from multiprocessing import Process
-import multiprocessing
-avg_log_p_map_middle_off = dict()
-# define the processing for each id_middlespan_gap example as a function and use threading to use 3 models in parallel
-def process(list_id_middlespan_gap, model_, device='cuda:0'):
-    for id_middlespan_gap in tqdm(list_id_middlespan_gap):
-        input_ids = id_middlespan_gap_to_input_and_completions[id_middlespan_gap]['inputs'].unsqueeze(0).to(device)
-        completions_batch = id_middlespan_gap_to_input_and_completions[id_middlespan_gap]['labels'].to(device)
-        outputs = lambada_utils.multi_labels_forward(model_, input_ids, completions_batch)
+RUN_CELL = 0
+if RUN_CELL:
+    from multiprocessing import Process
+    import multiprocessing
+    avg_log_p_map_middle_off = dict()
+    # define the processing for each id_middlespan_gap example as a function and use threading to use 3 models in parallel
+    def process(list_id_middlespan_gap, model_, device='cuda:0'):
+        for id_middlespan_gap in tqdm(list_id_middlespan_gap):
+            input_ids = id_middlespan_gap_to_input_and_completions[id_middlespan_gap]['inputs'].unsqueeze(0).to(device)
+            completions_batch = id_middlespan_gap_to_input_and_completions[id_middlespan_gap]['labels'].to(device)
+            outputs = lambada_utils.multi_labels_forward(model_, input_ids, completions_batch)
 
-        middlespan_length = id_middlespan_gap[1]
+            middlespan_length = id_middlespan_gap[1]
 
-        for completion_index in range(len(completions_batch)):
-            avg_log_p = -ce_loss(
-                # Only care about the tokens corresponding to the last word and omit offset tokens 
-                # the first one is <extra_id_0> and omitted
-                outputs.logits[completion_index][2+middlespan_length:], 
-                completions_batch[completion_index][2+middlespan_length:]
-            )
-            avg_log_p_map_middle_off[(*id_middlespan_gap, completion_index)] = \
-                avg_log_p.detach().cpu().tolist()
-        
-# run the above function in parallel
-import threading
-multiprocessing.set_start_method('spawn')
+            for completion_index in range(len(completions_batch)):
+                avg_log_p = -ce_loss(
+                    # Only care about the tokens corresponding to the last word and omit offset tokens 
+                    # the first one is <extra_id_0> and omitted
+                    outputs.logits[completion_index][2+middlespan_length:], 
+                    completions_batch[completion_index][2+middlespan_length:]
+                )
+                avg_log_p_map_middle_off[(*id_middlespan_gap, completion_index)] = \
+                    avg_log_p.detach().cpu().tolist()
+            
+    # run the above function in parallel
+    import threading
+    multiprocessing.set_start_method('spawn')
 
-all_id_middlespan_gaps = list(id_middlespan_gap_to_input_and_completions.keys())
-all_id_middlespan_gaps_0 = all_id_middlespan_gaps[:len(all_id_middlespan_gaps)//2]
-all_id_middlespan_gaps_1 = all_id_middlespan_gaps[len(all_id_middlespan_gaps)//2:]
-# all_id_middlespan_gaps_2 = all_id_middlespan_gaps[2*len(all_id_middlespan_gaps)//3:]
+    all_id_middlespan_gaps = list(id_middlespan_gap_to_input_and_completions.keys())
+    all_id_middlespan_gaps_0 = all_id_middlespan_gaps[:len(all_id_middlespan_gaps)//2]
+    all_id_middlespan_gaps_1 = all_id_middlespan_gaps[len(all_id_middlespan_gaps)//2:]
+    # all_id_middlespan_gaps_2 = all_id_middlespan_gaps[2*len(all_id_middlespan_gaps)//3:]
 
-t0 = Process(target=process, args=(all_id_middlespan_gaps_0, model, 'cuda:0'))
-t1 = Process(target=process, args=(all_id_middlespan_gaps_1, model1, 'cuda:2'))
-# t2 = threading.Thread(target=process, args=(all_id_middlespan_gaps_2, model2, 'cuda:4'))
+    t0 = Process(target=process, args=(all_id_middlespan_gaps_0, model, 'cuda:0'))
+    t1 = Process(target=process, args=(all_id_middlespan_gaps_1, model1, 'cuda:2'))
+    # t2 = threading.Thread(target=process, args=(all_id_middlespan_gaps_2, model2, 'cuda:4'))
 
-t0.start()
-t1.start()
-# t2.start()
+    t0.start()
+    t1.start()
+    # t2.start()
 
 # %% [markdown]
 # ### End of main code
@@ -606,7 +697,7 @@ print("Threads finished execution")
 import importlib
 import lambada_utils  # Import the module, not just the class
 importlib.reload(lambada_utils)
-from lambada_utils import LambadaOutputProcessor  # Re-import the class
+from lambada_utils import LambadaProcessor  # Re-import the class
 
 # %%
 import importlib
