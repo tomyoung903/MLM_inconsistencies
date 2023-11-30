@@ -9,17 +9,17 @@ from tqdm import tqdm
 import json
 
 
-class LambadaOutputProcessor:
+class LambadaProcessor:
     '''Process the output (completion) of the LLM model on the lambada dataset to obtain valid last words.'''
     def __init__(self, 
                  tokenizer, 
                  ul2_mode: str,
-                 lambada_test_set_path: str,):
+                 lambada_dataset_path: str,):
         self.tokenizer = tokenizer
         self.ENDING_PUNCTUATIONS = ',!.:;?' # If the model generates one, it is considered that the sentence is complete and we can parse for the last word
         self.vocab = tokenizer.get_vocab()
         self.ENDING_PUNCTUATIONS_IDS_LIST = [self.vocab[p] for p in self.ENDING_PUNCTUATIONS]
-        with open(lambada_test_set_path, "r") as f:
+        with open(lambada_dataset_path, "r") as f:
             lambada = [json.loads(line) for line in f.readlines()]
 
 

@@ -81,3 +81,19 @@ def to_tensor(data: Dict[Any, List[np.ndarray]]) -> Dict[Any, List[Tensor]]:
     }
 
 
+# Function to check the remaining GPU memory for each device
+def check_gpu_memory():
+    gpu_memory = []
+    for i in range(torch.cuda.device_count()):
+        torch.cuda.set_device(i)
+        total_memory = torch.cuda.get_device_properties(i).total_memory
+        reserved_memory = torch.cuda.memory_reserved(i)
+        free_memory = total_memory - reserved_memory
+        gpu_memory.append({
+            'device': i,
+            'total_memory_GB': total_memory / (1024**3),
+            'reserved_memory_GB': reserved_memory / (1024**3),
+            'free_memory_GB': free_memory / (1024**3)
+        })
+    return gpu_memory
+
