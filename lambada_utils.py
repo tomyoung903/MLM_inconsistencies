@@ -270,8 +270,7 @@ class LambadaProcessor:
 
     def get_middle_off_samples(self,
                                 id_to_completions: Dict[int, List[torch.Tensor]],
-                                range_middle_span_length: Iterable[int],
-                                range_middle_to_end_gap: Iterable[int],
+                                length_gap_tuples: List[tuple],
                                 to_gpu=False):
         '''Apply create_middle_off_sample to all the completions of each example by calling create_middle_off_sample'''
         dataset_middle_off = {}
@@ -279,8 +278,7 @@ class LambadaProcessor:
             # skip if there is no completion
             if len(id_to_completions[example_id]) == 0:
                 continue
-            for middle_span_length in range_middle_span_length:
-                for middle_to_end_gap in range_middle_to_end_gap:
+            for (middle_span_length, middle_to_end_gap) in length_gap_tuples:
                     inputs = self.create_middle_off_sample(
                         self.dataset[example_id]['inputs_pretokenized'],
                         id_to_completions[example_id][0], # any completion is fine to get the input_ids
