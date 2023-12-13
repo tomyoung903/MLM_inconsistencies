@@ -6,3 +6,4 @@ SentencePiece
 accelerate
 matplotlib
 GitPython
+psutil

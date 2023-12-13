@@ -14,7 +14,16 @@ class LambadaProcessor:
     def __init__(self, 
                  tokenizer, 
                  ul2_mode: str,
-                 lambada_dataset_path: str,):
+                 lambada_dataset_path: str,
+                 rm_punc_space:bool):
+        '''
+        Args:
+            tokenizer: the tokenizer used to tokenize the input
+            ul2_mode: "[NLG]", "[NLU]" or "[S2S]"
+            lambada_dataset_path: the path to the lambada dataset
+            rm_punc_space: whether to remove the spaces before punctuations in the completion
+        '''
+        
         self.tokenizer = tokenizer
         self.ENDING_PUNCTUATIONS = ',!.:;?' # If the model generates one, it is considered that the sentence is complete and we can parse for the last word
         self.vocab = tokenizer.get_vocab()
@@ -23,7 +32,17 @@ class LambadaProcessor:
             lambada = [json.loads(line) for line in f.readlines()]
 
 
-        # To use the NLG mode of UL2, append [NLG] to the beginning of each input, and <extra_id_0> to the end
+        # remove spaces before punctuations
+        if rm_punc_space:
+            lambada = [
+                {
+                    "inputs_pretokenized": self._remove_spaces_before_puncs(x['inputs_pretokenized']),
+                    "targets_pretokenized": x['targets_pretokenized']
+                } 
+                for x in lambada
+            ]
+
+        # append ul2_mode to the beginning of each input, and <extra_id_0> to the end
         lambada = [
             {
                 "inputs_pretokenized": ul2_mode + " " + x['inputs_pretokenized'] + " <extra_id_0>",
@@ -32,7 +51,17 @@ class LambadaProcessor:
             for x in lambada
         ]
 
+        
         self.dataset = lambada
+
+    def _remove_spaces_before_puncs(self, paragraph: str):
+        '''Remove the spaces before punctuations in the paragraph'''
+        PUNCS = [',', '!', '.', ':', ';', '?', 'n\'t', '\'d', '\'s', '\'m', '\'ll']
+        # check if there is a space before the punc, if so remove the space
+        # Example 'i love you !' -> 'i love you!'
+        for punc in PUNCS:
+            paragraph = paragraph.replace(" " + punc, punc)
+        return paragraph
 
     def get_word_from_completion(self, completion: str):
         '''Get the last word from the given completion, if there is a valid one. Return the word.'''
@@ -129,7 +158,7 @@ class LambadaProcessor:
 
 
 
-    def before_first_punc(self, completion_ids: List[Tensor]):
+    def before_first_punc_including(self, completion_ids: List[Tensor]):
         '''given a list of completion_ids (completions by the LLM), return the string before (including) the first punctuation'''
         completions_ids_return = []
         for completion in completion_ids:
@@ -213,18 +242,19 @@ class LambadaProcessor:
                                 middle_to_end_gap: int = 5,
                                 return_tensor: str = "inputs"):
         '''
-        Remove a random span in the middle of the input and replace it with <extra_id_0>, 
+        Remove a span in the middle of the input and replace it with <extra_id_0>, 
         the old <extra_id_0> should be replaced with <extra_id_1>
         '''
-        input_ids = self.tokenizer(inputs, return_tensors="pt").input_ids
+        input_ids = self.tokenizer(inputs, return_tensors="pt").input_ids # 2D: 1 * len
 
         '''
         input_ids (1*len) == [input_regular_tokens, extra_id_0, eos_token_id]
          (break down input_regular_tokens) -> 
           input_regular_tokens_keep_0, input_regular_tokens_move_0, input_regular_tokens_keep_1, extra_id_0, eos_token_id
          (replace input_regular_tokens_move_0 with <extra_id_0>) -> 
-            input_regular_tokens_keep_0, extra_id_0, input_regular_tokens_keep_1, extra_id_1, eos_token_id
-        
+          input_regular_tokens_keep_0, extra_id_0, input_regular_tokens_keep_1, extra_id_1, eos_token_id
+          
+          
         middle_span_length: len(input_regular_tokens_move_0)
         middle_to_end_gap: len(input_regular_tokens_keep_1)
             
@@ -235,7 +265,7 @@ class LambadaProcessor:
         return_tensor: "inputs" or "labels"
         '''
 
-        input_regular_tokens = input_ids[0][:-2]
+        input_regular_tokens = input_ids[0][:-2] # the last two tokens are <extra_id_0>
         input_regular_tokens_keep_1 = input_regular_tokens[-middle_to_end_gap:]
         input_regular_tokens_move_0 = input_regular_tokens[-middle_to_end_gap-middle_span_length:-middle_to_end_gap]
         input_regular_tokens_keep_0 = input_regular_tokens[:-middle_to_end_gap-middle_span_length]
@@ -268,48 +298,211 @@ class LambadaProcessor:
             raise ValueError("return_tensor should be either 'inputs' or 'labels'")
 
 
+    def create_nlg_style_samples(self,
+                                inputs: str,
+                                labels: torch.Tensor, # 1D
+                                span_length: int = 5,
+                                gap_between_spans: int = 5,
+                                num_spans: int = 2):
+        '''
+        Remove spans in the middle of the input and replace them with <extra_id_0>, <extra_id_1>, <extra_id_2>, ...
+        # 32099: <extra_id_0>
+        # 32098: <extra_id_1>
+        # ...
+        # 32000: <extra_id_99>
+        Start from the end and work backwards.
+        '''
+        input_ids = self.tokenizer(inputs, return_tensors="pt").input_ids
+
+
+
+        return
+        
+
+    def create_multiple_span_sample(self,
+                                    inputs: str,
+                                    labels: torch.Tensor, # 1D
+                                    span_length: int = 5,
+                                    gap_between_spans: int = 5,
+                                    num_spans: int = 2,
+                                    return_tensor: str = "inputs"):
+        '''
+        This function is a generalization of create_middle_off_sample. It manipulates the input sequence by replacing specified spans with unique <extra_id_n> tokens for each span.
+        It handles any number of spans defined by 'num_spans'. Each span of length 'span_length' is separated by a gap of 'gap_between_spans' tokens.
+
+        A num_spans=2 example:
+    
+            input_ids (1*len) == [input_regular_tokens, extra_id_0, eos_token_id]
+
+            (break down input_regular_tokens) -> 
+            input_regular_tokens_keep, input_regular_tokens_move_0, gap_0, input_regular_tokens_move_1, gap_1, extra_id_0, eos_token_id
+
+            (replace input_regular_tokens_move_0 and input_regular_tokens_move_1 with <extra_id_0> and <extra_id_1> respectively) -> 
+            input_regular_tokens_keep, extra_id_0, gap_0, extra_id_1, gap_1, extra_id_2, eos_token_id
+                
+            labels (1D) == [extra_id_0, labels_regular_tokens]
+                (add input_regular_tokens_move_0 and input_regular_tokens_move_1 to the front and change <extra_id_0> and <extra_id_1> respectively) ->
+                extra_id_0, input_regular_tokens_move_0, extra_id_1, input_regular_tokens_move_1, extra_id_2, labels_regular_tokens
+            
+        
+        The function dynamically segments the input_regular_tokens into multiple spans and gaps, replacing each span with a corresponding <extra_id_n>.
+        The labels are also adjusted to match the new structure of the input sequence.
+
+        Parameters:
+        inputs: str - The input text.
+        labels: torch.Tensor - The corresponding labels.
+        span_length: int - The length of each span to be replaced.
+        gap_between_spans: int - The length of the gap between spans.
+        num_spans: int - The number of spans to replace.
+        '''
+
+        input_ids = self.tokenizer(inputs, return_tensors="pt").input_ids[0]
+        total_length = len(input_ids) - 2  # excluding extra_id_0 and eos_token_id
+
+        # Calculate the starting point for the first span
+        total_span_length = (span_length + gap_between_spans) * num_spans # Total length of all spans and gaps
+        start_of_span = total_length - total_span_length
+
+        input_ids_return = input_ids[:start_of_span]
+        # initialize labels_return as 1*0 tensor
+        labels_return = torch.tensor([],dtype=torch.int64)
+        for i in range(num_spans):
+            extra_id_token = torch.tensor([self.tokenizer.convert_tokens_to_ids(f"<extra_id_{i}>")])
+
+            input_ids_return = torch.cat((input_ids_return, extra_id_token))
+            labels_return = torch.cat((labels_return, extra_id_token))
+
+            # Add the gap between spans to input_ids_return
+            gap_start = start_of_span + i * (span_length + gap_between_spans) + span_length
+            gap_end = gap_start + gap_between_spans
+            input_ids_return = torch.cat((input_ids_return, input_ids[gap_start:gap_end]))
+
+            # Add the span to the labels_return
+            span_start = start_of_span + i * (span_length + gap_between_spans)
+            span_end = span_start + span_length
+            labels_return = torch.cat((labels_return, input_ids[span_start:span_end]))
+            
+        
+        # Add the last extra_id_token and eos_token_id to input_ids_return
+        extra_id_token = torch.tensor([self.tokenizer.convert_tokens_to_ids(f"<extra_id_{num_spans}>")])
+        input_ids_return = torch.cat((input_ids_return, extra_id_token, input_ids[-1:]))
+
+        # Add the last extra_id_token and the labels_regular_tokens to labels_return
+        labels_return = torch.cat((labels_return, extra_id_token, labels[1:]))
+
+        if return_tensor == "inputs":
+            return input_ids_return
+        elif return_tensor == "labels":
+            return labels_return
+
+
     def get_middle_off_samples(self,
-                                id_to_completions: Dict[int, List[torch.Tensor]],
+                                id_to_completions_ids: Dict[int, List[torch.Tensor]],
                                 length_gap_tuples: List[tuple],
                                 to_gpu=False):
-        '''Apply create_middle_off_sample to all the completions of each example by calling create_middle_off_sample'''
+        '''Apply create_middle_off_sample to all the completions of each example for every length_gap tuple'''
         dataset_middle_off = {}
-        for example_id in tqdm(range(len(id_to_completions))):
+        for example_id in tqdm(range(len(id_to_completions_ids))):
             # skip if there is no completion
-            if len(id_to_completions[example_id]) == 0:
+            if len(id_to_completions_ids[example_id]) == 0:
                 continue
             for (middle_span_length, middle_to_end_gap) in length_gap_tuples:
-                    inputs = self.create_middle_off_sample(
+                inputs = self.create_middle_off_sample(
+                    self.dataset[example_id]['inputs_pretokenized'],
+                    id_to_completions_ids[example_id][0], # any completion is fine to get the input_ids
+                    middle_span_length=middle_span_length,
+                    middle_to_end_gap=middle_to_end_gap,
+                    return_tensor="inputs"
+                )
+                # get the list of labels first then pad them to the same length for a large tensor
+                labels = [
+                    self.create_middle_off_sample(
                         self.dataset[example_id]['inputs_pretokenized'],
-                        id_to_completions[example_id][0], # any completion is fine to get the input_ids
+                        completion,
                         middle_span_length=middle_span_length,
                         middle_to_end_gap=middle_to_end_gap,
-                        return_tensor="inputs"
+                        return_tensor="labels"
                     )
-                    # get the list of labels first then pad them to the same length for a large tensor
-                    labels = [
-                        self.create_middle_off_sample(
-                            self.dataset[example_id]['inputs_pretokenized'],
-                            completion,
-                            middle_span_length=middle_span_length,
-                            middle_to_end_gap=middle_to_end_gap,
-                            return_tensor="labels"
-                        )
-                        for completion in id_to_completions[example_id]
-                    ]
-                    labels = torch.nn.utils.rnn.pad_sequence(
-                        labels, batch_first=True, padding_value=self.tokenizer.pad_token_id)
+                    for completion in id_to_completions_ids[example_id]
+                ]
+                labels = torch.nn.utils.rnn.pad_sequence(
+                    labels, batch_first=True, padding_value=self.tokenizer.pad_token_id)
 
-                    if to_gpu:
-                        inputs = inputs.cuda()
-                        labels = labels.cuda()
+                if to_gpu:
+                    inputs = inputs.cuda()
+                    labels = labels.cuda()
 
-                    dataset_middle_off[(example_id, middle_span_length, middle_to_end_gap)] = {
-                            "inputs": inputs,
-                            "labels": labels
-                        }
+                dataset_middle_off[(example_id, middle_span_length, middle_to_end_gap)] = {
+                        "inputs": inputs,
+                        "labels": labels
+                    }
         return dataset_middle_off
-                    
+
+
+    def get_multiple_span_samples(self,
+                                  id_to_completions_ids: Dict[int, List[torch.Tensor]],
+                                  length_gap_num_tuple: tuple = (3, 5, None),
+                                  max_num_spans = 99,
+                                  to_gpu=False):
+        '''Apply create_multiple_span_sample to all the completions of each example with length_gap_num_tuple'''
+        dataset_multiple_span = {}
+        span_length, gap_between_spans, num_spans = length_gap_num_tuple
+        is_num_spans_given = num_spans != None
+
+        for example_id in tqdm(range(len(id_to_completions_ids))):
+            # skip if there is no completion
+            if len(id_to_completions_ids[example_id]) == 0:
+                continue
+            
+            if not is_num_spans_given: # decide via length of input for each example
+                input_ids = self.tokenizer(self.dataset[example_id]['inputs_pretokenized'], return_tensors="pt").input_ids[0]
+                operation_length = len(input_ids) - 12  # excluding extra_id_0, eos_token_id, sentinel token, and the first few (~8) tokens 
+                num_spans = operation_length // (span_length + gap_between_spans)
+                num_spans = min(num_spans, max_num_spans)
+
+            inputs = self.create_multiple_span_sample(
+                self.dataset[example_id]['inputs_pretokenized'],
+                id_to_completions_ids[example_id][0], # any completion is fine to get the input_ids
+                span_length=span_length,
+                gap_between_spans=gap_between_spans,
+                num_spans=num_spans,
+                return_tensor="inputs"
+            )
+
+            # get the list of labels first then pad them to the same length for a large tensor
+            labels = [
+                self.create_multiple_span_sample(
+                    self.dataset[example_id]['inputs_pretokenized'],
+                    completion,
+                    span_length=span_length,
+                    gap_between_spans=gap_between_spans,
+                    num_spans=num_spans,
+                    return_tensor="labels"
+                )
+                for completion in id_to_completions_ids[example_id]
+            ]
+            labels = torch.nn.utils.rnn.pad_sequence(
+                labels, batch_first=True, padding_value=self.tokenizer.pad_token_id)
+
+            if to_gpu:
+                inputs = inputs.cuda()
+                labels = labels.cuda()
+
+            # if is_num_spans_given:
+            dataset_multiple_span[(example_id, span_length, gap_between_spans, num_spans)] = {
+                    "inputs": inputs,
+                    "labels": labels
+                }
+            # else:
+            #     dataset_multiple_span[(example_id, span_length, gap_between_spans, 'auto')] = {
+            #             "inputs": inputs,
+            #             "labels": labels
+            #         }
+        return dataset_multiple_span
+
+
+
+
     def is_correct_completion(self, example_index:int, completion:torch.Tensor):
         if not isinstance(completion, torch.Tensor):
             return False
