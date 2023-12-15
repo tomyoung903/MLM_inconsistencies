@@ -1,5 +1,5 @@
 '''Utility functions to process the LLM model output on the lambada dataset to help with evaluation'''
-from typing import List, Dict, Any, Iterable # for type hinting
+from typing import List, Dict, Any, Iterable, Union, Tuple # for type hinting
 from torch import Tensor
 import numpy as np
 import torch
@@ -501,20 +501,41 @@ class LambadaProcessor:
         return dataset_multiple_span
 
 
+    def is_correct_result(self, example_index:int, completion_or_word:Union[torch.Tensor, str]):
+        '''
+        Check if the given completion_or_word is correct for the given example. If completion_or_word is a torch.Tensor, it is treated as a completion tensor, otherwise it is treated as a word string.
+        '''
+        if isinstance(completion_or_word, torch.Tensor):
+            # treat it as a completion tensor
+            completion_string = self.tokenizer.decode(completion_or_word)
+            if not isinstance(completion_string, str):
+                return False
+            word = self.get_word_from_completion(completion_string)
+            if not isinstance(word, str):
+                return False
+            return word == self.dataset[example_index]['targets_pretokenized'][0]
+        elif isinstance(completion_or_word, str):  
+            # treat it as a word string
+            return completion_or_word == self.dataset[example_index]['targets_pretokenized'][0]
+        else:
+            raise ValueError("completion_or_word should be either a torch.Tensor or a str")
 
 
-    def is_correct_completion(self, example_index:int, completion:torch.Tensor):
-        if not isinstance(completion, torch.Tensor):
-            return False
-        completion_string = self.tokenizer.decode(completion)
-        if not isinstance(completion_string, str):
-            return False
-        word = self.get_word_from_completion(completion_string)
-        if not isinstance(word, str):
-            return False
-        if word == self.dataset[example_index]['targets_pretokenized'][0]:
-            return True
-        
+    def collate_puncs(self, avg_log_p_and_completion: List[Tuple[float, torch.Tensor]]):
+        ''' This function did not help with the performance. It is not used at the moment.
+        Collate different puncs for the same word: if a word has multiple puncs, then the avg_log_p's for (word, punc_k)'s are max-pooled or added up or avg'ed.Right now they are avg'ed.'''    
+        word_to_avg_log_p = {}
+        # print(avg_log_p_and_completion)
+        for avg_log_p, completion in avg_log_p_and_completion:
+            # print(avg_log_p, completion)
+            word = self.get_word_from_completion(self.tokenizer.decode(completion))
+            word_to_avg_log_p[word] = word_to_avg_log_p.get(word, []) + [avg_log_p]
+
+        # convert back to list of tuples
+        # print(word_to_avg_log_p)
+        avg_log_p_and_word = [(sum(word_to_avg_log_p[word]) / len(word_to_avg_log_p[word]), word) for word in word_to_avg_log_p]
+        return avg_log_p_and_word
+    
 
 def multi_labels_forward(
     model,
