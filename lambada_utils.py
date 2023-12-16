@@ -444,7 +444,8 @@ class LambadaProcessor:
                                   length_gap_num_tuple: tuple = (3, 5, None),
                                   max_num_spans = 99,
                                   to_gpu=False):
-        '''Apply create_multiple_span_sample to all the completions of each example with length_gap_num_tuple'''
+        '''Apply create_multiple_span_sample to all the completions of each example with length_gap_num_tuple.
+        If num_spans is None, then the number of spans is decided by the length of the input.'''
         dataset_multiple_span = {}
         span_length, gap_between_spans, num_spans = length_gap_num_tuple
         is_num_spans_given = num_spans != None
