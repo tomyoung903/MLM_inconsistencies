@@ -1,3 +1,9 @@
 load_dataset.py
 huggingface_cache
 general_utils.py
+ul2_eoc.ipynb
+data/pkls/offset_samples_test_max_offset_1_fixed_spaced_punc_2023-12-14-22:01:11.pickle
+data/pkls/offset_samples_test_max_offset_1_fixed_spaced_punc_2023-12-15-16:53:47.pickle
+data/pkls/offset_samples_test_max_offset_1_fixed_spaced_punc_2023-12-15-17:16:21.pickle
+data/pkls/offset_samples_test_max_offset_1_fixed_spaced_punc_2023-12-15-20:20:50.pickle
+
