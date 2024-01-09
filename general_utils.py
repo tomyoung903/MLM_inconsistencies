@@ -97,3 +97,24 @@ def check_gpu_memory():
         })
     return gpu_memory
 
+def find_string_in_file(file_path, search_string):
+    """
+    Searches for a specific string in a text file and prints out each line containing the string, along with the line number.
+
+    :param file_path: Path to the text file.
+    :param search_string: String to search for in the file.
+    # Example usage:
+    # find_string_in_file('path/to/your/file.txt', 'your_search_string')
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            found = False
+            for line_number, line in enumerate(file, start=1):
+                if search_string in line:
+                    print(f"String found in file {file_path} on line {line_number}: {line.strip()}")
+                    found = True
+    except FileNotFoundError:
+        print("The file was not found.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+

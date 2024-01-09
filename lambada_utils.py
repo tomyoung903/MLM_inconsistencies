@@ -442,7 +442,8 @@ class LambadaProcessor:
     def get_multiple_span_samples(self,
                                   id_to_completions_ids: Dict[int, List[torch.Tensor]],
                                   length_gap_num_tuple: tuple = (3, 5, None),
-                                  max_num_spans = 99,
+                                  max_num_spans = 99, # <extra_id_k> goes up to <extra_id_99>
+                                  auto_ratio = 0.3, # if num_spans is None, then the no. spans decided by input length is scaled by this ratio
                                   to_gpu=False):
         '''Apply create_multiple_span_sample to all the completions of each example with length_gap_num_tuple.
         If num_spans is None, then the number of spans is decided by the length of the input.'''
@@ -458,7 +459,7 @@ class LambadaProcessor:
             if not is_num_spans_given: # decide via length of input for each example
                 input_ids = self.tokenizer(self.dataset[example_id]['inputs_pretokenized'], return_tensors="pt").input_ids[0]
                 operation_length = len(input_ids) - 12  # excluding extra_id_0, eos_token_id, sentinel token, and the first few (~8) tokens 
-                num_spans = operation_length // (span_length + gap_between_spans)
+                num_spans = int(auto_ratio * operation_length // (span_length + gap_between_spans))
                 num_spans = min(num_spans, max_num_spans)
 
             inputs = self.create_multiple_span_sample(
