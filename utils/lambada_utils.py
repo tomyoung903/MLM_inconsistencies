@@ -7,10 +7,12 @@ from transformers.modeling_outputs import Seq2SeqLMOutput
 from torch.nn import CrossEntropyLoss
 from tqdm import tqdm
 import json
+from . import eoc
+from abc import ABC, abstractmethod
 
 
 class LambadaProcessor:
-    '''Process the output (completion) of the LLM model on the lambada dataset to obtain valid last words.'''
+    '''Various functions for lambada. Some process the original prompts and completions for EOC-style prompts and completions'''
     def __init__(self, 
                  tokenizer, 
                  ul2_mode: str,
@@ -36,8 +38,8 @@ class LambadaProcessor:
         if rm_punc_space:
             lambada = [
                 {
-                    "inputs_pretokenized": self._remove_spaces_before_puncs(x['inputs_pretokenized']),
-                    "targets_pretokenized": x['targets_pretokenized']
+                    "inputs": self._remove_spaces_before_puncs(x['inputs_pretokenized']),
+                    "targets": x['targets_pretokenized']
                 } 
                 for x in lambada
             ]
@@ -45,8 +47,8 @@ class LambadaProcessor:
         # append ul2_mode to the beginning of each input, and <extra_id_0> to the end
         lambada = [
             {
-                "inputs_pretokenized": ul2_mode + " " + x['inputs_pretokenized'] + " <extra_id_0>",
-                "targets_pretokenized": x['targets_pretokenized']
+                "inputs": ul2_mode + " " + x['inputs'] + " <extra_id_0>",
+                "targets": x['targets']
             } 
             for x in lambada
         ]
@@ -91,7 +93,6 @@ class LambadaProcessor:
             word = word if len(word.split(" ")) == 1 else None
         return word
 
-
     def get_words_from_completions(self, completions: List[str]):
         '''Get the last word from each of the given completions,  Return all the words.'''
         # if a punctuation can be found in the completion, get the word before the punctuation
@@ -101,8 +102,6 @@ class LambadaProcessor:
             if word:
                 words.append(word)
         return words
-
-
 
     def get_punctuated_words(self, completions: List[str]):
         '''given a list of completions (completions by the LLM), return a list of word-punc pairs'''
@@ -136,13 +135,11 @@ class LambadaProcessor:
         words = [word for word in words if "<unk>" not in word]
         return list(set(words))
 
-
     def remove_pad(self, completions: List[str]):
         '''given a list of completions (completions by the LLM), remove the <pad>'''
         # if the word starts with <pad>, remove the <pad>
         completions = [completion[5:] if completion.startswith("<pad>") else completion for completion in completions]
         return completions
-
 
     def remove_pad_id(self, completions: List[Tensor]):
         '''given a list of completions of ids (completions by the LLM), remove the <pad>'''
@@ -155,8 +152,6 @@ class LambadaProcessor:
             else:
                 completions_return.append(completion)
         return completions_return
-
-
 
     def before_first_punc_including(self, completion_ids: List[Tensor]):
         '''given a list of completion_ids (completions by the LLM), return the string before (including) the first punctuation'''
@@ -210,14 +205,14 @@ class LambadaProcessor:
             for offset in range(max_offset):
                 # get input_ids, which is identical for all completions
                 input_ids = self.create_offset_sample(
-                    self.dataset[example_id]['inputs_pretokenized'],
+                    self.dataset[example_id]['inputs'],
                     id_to_completions_ids[example_id][0], # any completion is fine to get the input_ids
                     offset=offset,
                     to_gpu=to_gpu,
                 )[0]
                 labels = [
                     self.create_offset_sample(
-                        self.dataset[example_id]['inputs_pretokenized'],
+                        self.dataset[example_id]['inputs'],
                         completion,
                         offset=offset,
                         to_gpu=to_gpu,
@@ -345,7 +340,7 @@ class LambadaProcessor:
                 extra_id_0, input_regular_tokens_move_0, extra_id_1, input_regular_tokens_move_1, extra_id_2, labels_regular_tokens
             
         
-        The function dynamically segments the input_regular_tokens into multiple spans and gaps, replacing each span with a corresponding <extra_id_n>.
+        The function segments the input_regular_tokens into multiple spans and gaps, replacing each span with a corresponding <extra_id_n>.
         The labels are also adjusted to match the new structure of the input sequence.
 
         Parameters:
@@ -408,7 +403,7 @@ class LambadaProcessor:
                 continue
             for (middle_span_length, middle_to_end_gap) in length_gap_tuples:
                 inputs = self.create_middle_off_sample(
-                    self.dataset[example_id]['inputs_pretokenized'],
+                    self.dataset[example_id]['inputs'],
                     id_to_completions_ids[example_id][0], # any completion is fine to get the input_ids
                     middle_span_length=middle_span_length,
                     middle_to_end_gap=middle_to_end_gap,
@@ -417,7 +412,7 @@ class LambadaProcessor:
                 # get the list of labels first then pad them to the same length for a large tensor
                 labels = [
                     self.create_middle_off_sample(
-                        self.dataset[example_id]['inputs_pretokenized'],
+                        self.dataset[example_id]['inputs'],
                         completion,
                         middle_span_length=middle_span_length,
                         middle_to_end_gap=middle_to_end_gap,
@@ -438,6 +433,15 @@ class LambadaProcessor:
                     }
         return dataset_middle_off
 
+    def calculate_num_spans(self, example_id: int, span_length: int, gap_between_spans: int, auto_ratio: float = 0.3, max_num_spans = 99):
+        '''Calculate the number of spans for the given example_id, span_length, and gap_between_spans. Minimum 1.'''
+        input_ids = self.tokenizer(self.dataset[example_id]['inputs'], return_tensors="pt").input_ids[0]
+        considered_length = len(input_ids) - 12 # excluding extra_id_0, eos_token_id, sentinel token, and the first few (~8) tokens
+        num_spans = int(auto_ratio * considered_length // (span_length + gap_between_spans))
+        num_spans = min(num_spans, max_num_spans)
+        num_spans = max(num_spans, 1)
+        return num_spans
+        
 
     def get_multiple_span_samples(self,
                                   id_to_completions_ids: Dict[int, List[torch.Tensor]],
@@ -447,7 +451,7 @@ class LambadaProcessor:
                                   to_gpu=False):
         '''Apply create_multiple_span_sample to all the completions of each example with length_gap_num_tuple.
         If num_spans is None, then the number of spans is decided by the length of the input.'''
-        dataset_multiple_span = {}
+        dataset_multiple_spans = {}
         span_length, gap_between_spans, num_spans = length_gap_num_tuple
         is_num_spans_given = num_spans != None
 
@@ -457,13 +461,11 @@ class LambadaProcessor:
                 continue
             
             if not is_num_spans_given: # decide via length of input for each example
-                input_ids = self.tokenizer(self.dataset[example_id]['inputs_pretokenized'], return_tensors="pt").input_ids[0]
-                operation_length = len(input_ids) - 12  # excluding extra_id_0, eos_token_id, sentinel token, and the first few (~8) tokens 
-                num_spans = int(auto_ratio * operation_length // (span_length + gap_between_spans))
-                num_spans = min(num_spans, max_num_spans)
+                num_spans = self.calculate_num_spans(example_id, span_length, gap_between_spans, auto_ratio, max_num_spans)
 
-            inputs = self.create_multiple_span_sample(
-                self.dataset[example_id]['inputs_pretokenized'],
+            inputs = eoc.create_multiple_span_sample(
+                self.tokenizer,
+                self.dataset[example_id]['inputs'],
                 id_to_completions_ids[example_id][0], # any completion is fine to get the input_ids
                 span_length=span_length,
                 gap_between_spans=gap_between_spans,
@@ -473,8 +475,9 @@ class LambadaProcessor:
 
             # get the list of labels first then pad them to the same length for a large tensor
             labels = [
-                self.create_multiple_span_sample(
-                    self.dataset[example_id]['inputs_pretokenized'],
+                eoc.create_multiple_span_sample(
+                    self.tokenizer,
+                    self.dataset[example_id]['inputs'],
                     completion,
                     span_length=span_length,
                     gap_between_spans=gap_between_spans,
@@ -490,17 +493,17 @@ class LambadaProcessor:
                 inputs = inputs.cuda()
                 labels = labels.cuda()
 
-            # if is_num_spans_given:
-            dataset_multiple_span[(example_id, span_length, gap_between_spans, num_spans)] = {
-                    "inputs": inputs,
-                    "labels": labels
-                }
-            # else:
-            #     dataset_multiple_span[(example_id, span_length, gap_between_spans, 'auto')] = {
-            #             "inputs": inputs,
-            #             "labels": labels
-            #         }
-        return dataset_multiple_span
+            if is_num_spans_given:
+                dataset_multiple_spans[(example_id, span_length, gap_between_spans, num_spans)] = {
+                        "inputs": inputs,
+                        "labels": labels
+                    }
+            else:
+                dataset_multiple_spans[(example_id, span_length, gap_between_spans, auto_ratio)] = {
+                        "inputs": inputs,
+                        "labels": labels
+                    }
+        return dataset_multiple_spans
 
 
     def is_correct_result(self, example_index:int, completion_or_word:Union[torch.Tensor, str]):
@@ -515,10 +518,10 @@ class LambadaProcessor:
             word = self.get_word_from_completion(completion_string)
             if not isinstance(word, str):
                 return False
-            return word == self.dataset[example_index]['targets_pretokenized'][0]
+            return word == self.dataset[example_index]['targets'][0]
         elif isinstance(completion_or_word, str):  
             # treat it as a word string
-            return completion_or_word == self.dataset[example_index]['targets_pretokenized'][0]
+            return completion_or_word == self.dataset[example_index]['targets'][0]
         else:
             raise ValueError("completion_or_word should be either a torch.Tensor or a str")
 
@@ -547,7 +550,7 @@ def multi_labels_forward(
     return_dict: bool = None
 ) -> Seq2SeqLMOutput:
     r"""
-    Sometimes the input_ids are the same for multiple labels. This function is to avoid the repeated encoder computation.
+    Sometimes the input_ids are the same for multiple labels. This function is to avoid repeated encoder computation.
     Copied from T5ForConditionalGeneration.forward() from transformers/models/t5/modeling_t5.py with minor changes.
 
     Args:
@@ -573,10 +576,14 @@ def multi_labels_forward(
     # repeat along the batch dimension to match the number of labels 
     hidden_states = hidden_states.repeat(batch_size, 1, 1)
 
+    # save hidden states to a .torch file
+    # torch.save(hidden_states, 'hidden_states_batch.pt')
+
+
     if model.model_parallel:
         torch.cuda.set_device(model.decoder.first_device)
 
-    # get decoder inputs from shifting lm labels to the right
+    # get decoder inputs from shifting lm labels to the right (add pad_token_id at the beginning)
     decoder_input_ids = model._shift_right(labels)
 
     # Set device for model parallelism

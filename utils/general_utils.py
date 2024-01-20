@@ -6,6 +6,8 @@ import datetime
 import numpy as np
 from torch import Tensor
 import torch
+import hashlib
+import pickle
 
 
 
@@ -97,7 +99,7 @@ def check_gpu_memory():
         })
     return gpu_memory
 
-def find_string_in_file(file_path, search_string):
+def find_string_in_file(search_string, file_path):
     """
     Searches for a specific string in a text file and prints out each line containing the string, along with the line number.
 
@@ -118,3 +120,25 @@ def find_string_in_file(file_path, search_string):
     except Exception as e:
         print(f"An error occurred: {e}")
 
+# Walk through the directory for all .py files
+def find_py_files(directory_path):
+    import os
+    py_files = []
+    for dirpath, dirnames, filenames in os.walk(directory_path):
+        for filename in filenames:
+            # Construct the full file path
+            file_path = os.path.join(dirpath, filename)
+            # print(file_path)
+            # Check if the file is a python file
+            if file_path.endswith('.py'):
+                py_files.append(file_path)
+    return py_files
+
+def hash_object(obj):
+    # Serialize the object using pickle
+    serialized_obj = pickle.dumps(obj)
+    
+    # Create a SHA-256 hash of the serialized object
+    hash_obj = hashlib.sha256(serialized_obj).hexdigest()
+    
+    return hash_obj
