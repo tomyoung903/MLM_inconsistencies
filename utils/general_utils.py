@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import re
 from typing import List, Union, Dict, Any
 import time
@@ -137,7 +138,9 @@ def find_py_files(directory_path):
 def hash_object(obj):
     # Serialize the object using pickle
     serialized_obj = pickle.dumps(obj)    
+    # print size
+    print(f"Serialized object size: {sys.getsizeof(serialized_obj)} bytes")
     # Create a SHA-256 hash of the serialized object
     hash_obj = hashlib.sha256(serialized_obj).hexdigest()
-    
+    print(f"SHA-256 hash: {hash_obj}")
     return hash_obj
