@@ -136,8 +136,7 @@ def find_py_files(directory_path):
 
 def hash_object(obj):
     # Serialize the object using pickle
-    serialized_obj = pickle.dumps(obj)
-    
+    serialized_obj = pickle.dumps(obj)    
     # Create a SHA-256 hash of the serialized object
     hash_obj = hashlib.sha256(serialized_obj).hexdigest()
     

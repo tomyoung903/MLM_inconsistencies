@@ -169,6 +169,9 @@ class LambadaProcessor:
                             labels: torch.Tensor, 
                             offset=0,
                             to_gpu=False):
+        # deprerated
+        exit("create_offset_sample is deprecated. Use in under eoc.py instead.")
+
         '''
         Move the last offset tokens from input_ids to the front of labels.
         '''
@@ -193,7 +196,47 @@ class LambadaProcessor:
         else:
             return (input_ids, labels)
 
+
     def get_offset_samples(self,
+                           id_to_completions_ids: Dict[int, List],
+                           max_offset=5,
+                           to_gpu=False):
+        '''add offset to the samples'''
+        dataset_offset = {}
+        for example_id in tqdm(range(len(id_to_completions_ids))):
+            if len(id_to_completions_ids[example_id]) == 0:
+                continue
+            for offset in range(max_offset):
+                input_ids_original = self.tokenizer(self.dataset[example_id]['inputs'], return_tensors="pt").input_ids
+
+                # get input_ids, which is identical for all completions
+                input_ids = eoc.create_offset_sample(
+                    input_ids_original,
+                    id_to_completions_ids[example_id][0], # any completion is fine to get the input_ids
+                    offset=offset,
+                    to_gpu=to_gpu,
+                )[0]
+                labels = [
+                    eoc.create_offset_sample(
+                        input_ids_original,
+                        completion,
+                        offset=offset,
+                        to_gpu=to_gpu,
+                    )[1]
+                    for completion in id_to_completions_ids[example_id]
+                ]
+                # pad into a single tensor
+                labels = torch.nn.utils.rnn.pad_sequence(
+                    labels, batch_first=True, padding_value=self.tokenizer.pad_token_id)
+                dataset_offset[(example_id, offset)] = {
+                    "inputs": input_ids,
+                    "labels": labels
+                }
+                    
+        return dataset_offset
+
+
+    def get_offset_samples_jan26backup(self,
                            id_to_completions_ids: Dict[int, List],
                            max_offset=5,
                            to_gpu=False):
@@ -228,7 +271,8 @@ class LambadaProcessor:
                 }
                     
         return dataset_offset
-        
+
+
 
     def create_middle_off_sample(self,
                                 inputs: str,
@@ -463,9 +507,11 @@ class LambadaProcessor:
             if not is_num_spans_given: # decide via length of input for each example
                 num_spans = self.calculate_num_spans(example_id, span_length, gap_between_spans, auto_ratio, max_num_spans)
 
+            input_ids = self.tokenizer(self.dataset[example_id]['inputs'], return_tensors="pt").input_ids[0]
+
             inputs = eoc.create_multiple_span_sample(
                 self.tokenizer,
-                self.dataset[example_id]['inputs'],
+                input_ids,
                 id_to_completions_ids[example_id][0], # any completion is fine to get the input_ids
                 span_length=span_length,
                 gap_between_spans=gap_between_spans,
@@ -477,7 +523,7 @@ class LambadaProcessor:
             labels = [
                 eoc.create_multiple_span_sample(
                     self.tokenizer,
-                    self.dataset[example_id]['inputs'],
+                    input_ids,
                     completion,
                     span_length=span_length,
                     gap_between_spans=gap_between_spans,
@@ -549,6 +595,7 @@ def multi_labels_forward(
     use_cache: bool = None,
     return_dict: bool = None
 ) -> Seq2SeqLMOutput:
+    exit("multi_labels_forward is deprecated. Use in under eoc.py instead.")
     r"""
     Sometimes the input_ids are the same for multiple labels. This function is to avoid repeated encoder computation.
     Copied from T5ForConditionalGeneration.forward() from transformers/models/t5/modeling_t5.py with minor changes.

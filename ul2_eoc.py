@@ -15,7 +15,7 @@
 import os
 # os.environ["CUDA_VISIBLE_DEVICES"]="0,1,4,5,6,7"
 os.environ["CUDA_VISIBLE_DEVICES"]="2,3"
-import general_utils
+import utils.general_utils as general_utils
 # clear GPU memory
 if False:   
     general_utils.kill_gpu_process(os.environ["CUDA_VISIBLE_DEVICES"])
@@ -26,8 +26,8 @@ import pickle
 import time
 from tqdm import tqdm
 import json
-import lambada_utils
-from lambada_utils import LambadaProcessor
+import utils.lambada_utils as lambada_utils
+from utils.lambada_utils import LambadaProcessor
 
 
 # %% [markdown]
@@ -695,13 +695,13 @@ print("Threads finished execution")
 
 # %%
 import importlib
-import lambada_utils  # Import the module, not just the class
+import utils.lambada_utils as lambada_utils  # Import the module, not just the class
 importlib.reload(lambada_utils)
-from lambada_utils import LambadaProcessor  # Re-import the class
+from utils.lambada_utils import LambadaProcessor  # Re-import the class
 
 # %%
 import importlib
-import general_utils
+import utils.general_utils as general_utils
 importlib.reload(general_utils)
 
 # %%

@@ -1,6 +1,8 @@
 from typing import List, Dict, Any, Iterable, Union, Tuple # for type hinting
 import torch
 from tqdm import tqdm
+from transformers.modeling_outputs import Seq2SeqLMOutput
+from torch.nn import CrossEntropyLoss
 
 
 
@@ -14,14 +16,14 @@ def calculate_num_spans(input_ids: torch.Tensor, span_length: int, gap_between_s
 
 
 def create_multiple_span_sample(tokenizer,
-                                inputs: str,
+                                input_ids: torch.Tensor, # 1D
                                 labels: torch.Tensor, # 1D
                                 span_length: int = 5,
                                 gap_between_spans: int = 5,
                                 num_spans: int = 2,
                                 return_tensor: str = "inputs"):
     '''
-    This function is a generalization of create_middle_off_sample. It manipulates the input sequence by replacing specified spans with unique <extra_id_n> tokens for each span.
+    This function is a generalization of create_middle_off_sample. It manipulates the input sequence by replacing spans with unique <extra_id_n> tokens for each span.
     It handles any number of spans defined by 'num_spans'. Each span of length 'span_length' is separated by a gap of 'gap_between_spans' tokens.
 
     A num_spans=2 example:
@@ -43,17 +45,17 @@ def create_multiple_span_sample(tokenizer,
     The labels are also adjusted to match the new structure of the input sequence.
 
     Parameters:
-    inputs: str - The input text.
+    inputs: torch.Tensor - The input sequence.
     labels: torch.Tensor - The corresponding labels.
     span_length: int - The length of each span to be replaced.
     gap_between_spans: int - The length of the gap between spans.
     num_spans: int - The number of spans to replace.
     '''
 
-    input_ids = tokenizer(inputs, return_tensors="pt").input_ids[0]
+    # input_ids = tokenizer(inputs, return_tensors="pt").input_ids[0]
     total_length = len(input_ids) - 2  # excluding extra_id_0 and eos_token_id
 
-    # Calculate the starting point for the first span
+    # Calculate the starting point for the first spans
     total_span_length = (span_length + gap_between_spans) * num_spans # Total length of all spans and gaps
     start_of_span = total_length - total_span_length
 
@@ -90,63 +92,206 @@ def create_multiple_span_sample(tokenizer,
         return labels_return
 
 
-
-def get_multiple_span_samples(self,
-                                id_to_completions_ids: Dict[int, List[torch.Tensor]],
-                                length_gap_num_tuple: tuple = (3, 5, None),
-                                max_num_spans = 99, # <extra_id_k> goes up to <extra_id_99>
-                                auto_ratio = 0.3, # if num_spans is None, then the no. spans decided by input length is scaled by this ratio
-                                to_gpu=False):
-    '''Apply create_multiple_span_sample to all the completions of each example with length_gap_num_tuple.
-    If num_spans is None, then the number of spans is decided by the length of the input.'''
-    dataset_multiple_spans = {}
-    span_length, gap_between_spans, num_spans = length_gap_num_tuple
-    is_num_spans_given = num_spans != None
-
-    for example_id in tqdm(range(len(id_to_completions_ids))):
-        # skip if there is no completion
-        if len(id_to_completions_ids[example_id]) == 0:
-            continue
-        
-        if not is_num_spans_given: # decide via length of input for each example
-            num_spans = self.calculate_num_spans(example_id, span_length, gap_between_spans, auto_ratio, max_num_spans)
-
-        inputs = self.create_multiple_span_sample(
-            self.dataset[example_id]['inputs_pretokenized'],
-            id_to_completions_ids[example_id][0], # any completion is fine to get the input_ids
-            span_length=span_length,
-            gap_between_spans=gap_between_spans,
-            num_spans=num_spans,
-            return_tensor="inputs"
+def create_multiple_span_sample_from_batch(
+        tokenizer,
+        input_ids: torch.Tensor, # 1D
+        completions_batch: List[torch.Tensor], 
+        span_length: int = 5,
+        gap_between_spans: int = 5,  
+        num_spans: int = 2
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    input_ids_return = create_multiple_span_sample(
+        tokenizer, 
+        input_ids,
+        completions_batch[0], # any completion from the batch is fine
+        span_length, 
+        gap_between_spans, 
+        num_spans, 
+        return_tensor="inputs"
+    ).unsqueeze(0)
+    labels = [
+        create_multiple_span_sample(
+            tokenizer,
+            input_ids,
+            completion,
+            span_length,
+            gap_between_spans,
+            num_spans,
+            "labels"
         )
+        for completion in completions_batch
+    ]
+    labels_return = torch.nn.utils.rnn.pad_sequence(
+        labels, batch_first=True, padding_value=tokenizer.pad_token_id)
+    return input_ids_return, labels_return
 
-        # get the list of labels first then pad them to the same length for a large tensor
-        labels = [
-            self.create_multiple_span_sample(
-                self.dataset[example_id]['inputs_pretokenized'],
-                completion,
-                span_length=span_length,
-                gap_between_spans=gap_between_spans,
-                num_spans=num_spans,
-                return_tensor="labels"
-            )
-            for completion in id_to_completions_ids[example_id]
-        ]
-        labels = torch.nn.utils.rnn.pad_sequence(
-            labels, batch_first=True, padding_value=self.tokenizer.pad_token_id)
 
-        if to_gpu:
-            inputs = inputs.cuda()
-            labels = labels.cuda()
+def create_offset_sample(input_ids: torch.Tensor, # 2D: 1*len
+                        labels: torch.Tensor, # 1D
+                        offset=0,
+                        to_gpu=False) -> Tuple[torch.Tensor, torch.Tensor]:
+    '''
+    Move the last offset tokens from input_ids to the front of labels.
 
-        if is_num_spans_given:
-            dataset_multiple_spans[(example_id, span_length, gap_between_spans, num_spans)] = {
-                    "inputs": inputs,
-                    "labels": labels
-                }
-        else:
-            dataset_multiple_spans[(example_id, span_length, gap_between_spans, auto_ratio)] = {
-                    "inputs": inputs,
-                    "labels": labels
-                }
-    return dataset_multiple_spans
+    input_ids (1*len) == input_regular_tokens, extra_id_0, eos_token_id
+    
+    labels (1*len) == extra_id_0 + labels_regular_tokens
+
+    Returns:
+
+    (input_ids, labels) applied offset; input_ids is 2D Tensor and labels is 1D Tensor
+    '''
+    labels = labels.unsqueeze(0)
+    if offset != 0:
+        # when offset is used, we move the last offset tokens from input_ids to the front of labels.
+        to_move = input_ids[0][-offset-2:-2] # the last two tokens are <extra_id_0> and <eos> and not moved
+        labels = torch.cat((labels[0][0].unsqueeze(0), to_move, labels[0][1:]), dim=0) # the first token is <extra_id_0> and not moved
+        input_ids = torch.cat((input_ids[0][:-offset-2], input_ids[0][-2:]), dim=0)
+        input_ids = input_ids.unsqueeze(0)
+    else:
+        # squeeze the batch dimension
+        labels = labels[0]
+        input_ids = input_ids[0]
+    if to_gpu:
+        return (input_ids.cuda(), labels.cuda())
+    else:
+        return (input_ids, labels)
+
+
+def create_offset_sample_from_batch(
+        tokenizer,
+        input_ids: torch.Tensor, #  2D: 1*len
+        completions_batch: List[torch.Tensor], 
+        offset: int = 0,
+        to_gpu: bool = False
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    '''
+    input_ids: (1*len) 
+    completions_batch: List of 1D tensors
+    '''
+
+    input_ids_return = create_offset_sample(
+        input_ids,
+        completions_batch[0], # any completion from the batch is fine
+        offset,
+        to_gpu
+    )[0]
+    labels_return = [
+        create_offset_sample(
+            input_ids,
+            completion,
+            offset,
+            to_gpu
+        )[1]
+        for completion in completions_batch
+    ]
+    labels_return = torch.nn.utils.rnn.pad_sequence(
+                        labels_return, 
+                        batch_first=True, 
+                        padding_value=tokenizer.pad_token_id
+                    )
+    return input_ids_return, labels_return
+
+
+
+
+
+
+def multi_labels_forward(
+    model,
+    input_ids: torch.Tensor, # 2D: 1 * max_len
+    labels: torch.Tensor, # 2D: batch_size * max_len
+    use_cache: bool = None,
+    return_dict: bool = None
+) -> Seq2SeqLMOutput:
+    r"""
+    Sometimes the input_ids are the same for multiple labels. This function is to avoid repeated encoder computation.
+    Copied from T5ForConditionalGeneration.forward() from transformers/models/t5/modeling_t5.py with minor changes.
+
+    Args:
+        input_ids (`torch.Tensor` of shape `(1, sequence_length)`)
+
+        labels (`torch.Tensor` of shape `(batch_size, sequence_length)`)
+
+    """
+    use_cache = use_cache if use_cache is not None else model.config.use_cache
+    return_dict = return_dict if return_dict is not None else model.config.use_return_dict
+
+
+    # Encode if needed (training, first prediction pass)
+    encoder_outputs = model.encoder(
+        input_ids=input_ids,
+        return_dict=return_dict,
+    )
+
+    hidden_states = encoder_outputs[0]
+    
+    # get batch size from labels
+    batch_size = labels.shape[0]
+
+    # repeat along the batch dimension to match the number of labels 
+    hidden_states = hidden_states.repeat(batch_size, 1, 1)
+
+    # save hidden states to a .torch file
+    # torch.save(hidden_states, 'hidden_states_batch.pt')
+
+
+    if model.model_parallel:
+        torch.cuda.set_device(model.decoder.first_device)
+
+    # get decoder inputs from shifting lm labels to the right (add pad_token_id at the beginning)
+    decoder_input_ids = model._shift_right(labels)
+
+    # Set device for model parallelism
+    if model.model_parallel:
+        torch.cuda.set_device(model.decoder.first_device)
+        hidden_states = hidden_states.to(model.decoder.first_device)
+        if decoder_input_ids is not None:
+            decoder_input_ids = decoder_input_ids.to(model.decoder.first_device)
+    # Decode
+    # hidden_states.shape: batch_size * max_len * hidden_states_dim
+    decoder_outputs = model.decoder(
+        input_ids=decoder_input_ids,
+        encoder_hidden_states=hidden_states,
+        use_cache=use_cache,
+        return_dict=return_dict,
+    )
+
+    sequence_output = decoder_outputs[0]
+
+    # Set device for model parallelism
+    if model.model_parallel:
+        torch.cuda.set_device(model.encoder.first_device)
+        model.lm_head = model.lm_head.to(model.encoder.first_device)
+        sequence_output = sequence_output.to(model.lm_head.weight.device)
+
+    if model.config.tie_word_embeddings:
+        # Rescale output before projecting on vocab
+        # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
+        sequence_output = sequence_output * (model.model_dim**-0.5)
+
+    lm_logits = model.lm_head(sequence_output)
+
+    loss = None
+    if labels is not None:
+        loss_fct = CrossEntropyLoss(ignore_index=-100)
+        # move labels to correct device to enable PP
+        labels = labels.to(lm_logits.device)
+        loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
+        # TODO(thom): Add z_loss https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L666
+
+    if not return_dict:
+        output = (lm_logits,) + decoder_outputs[1:] + encoder_outputs
+        return ((loss,) + output) if loss is not None else output
+
+    return Seq2SeqLMOutput(
+        loss=loss,
+        logits=lm_logits,
+        past_key_values=decoder_outputs.past_key_values,
+        decoder_hidden_states=decoder_outputs.hidden_states,
+        decoder_attentions=decoder_outputs.attentions,
+        cross_attentions=decoder_outputs.cross_attentions,
+        encoder_last_hidden_state=encoder_outputs.last_hidden_state,
+        encoder_hidden_states=encoder_outputs.hidden_states,
+        encoder_attentions=encoder_outputs.attentions,
+    )
