@@ -135,23 +135,21 @@ def create_offset_sample(input_ids: torch.Tensor, # 2D: 1*len
 
     input_ids (1*len) == input_regular_tokens, extra_id_0, eos_token_id
     
-    labels (1*len) == extra_id_0 + labels_regular_tokens
+    labels (len) == extra_id_0 + labels_regular_tokens
 
     Returns:
 
     (input_ids, labels) applied offset; input_ids is 2D Tensor and labels is 1D Tensor
     '''
     labels = labels.unsqueeze(0)
-    if offset != 0:
-        # when offset is used, we move the last offset tokens from input_ids to the front of labels.
-        to_move = input_ids[0][-offset-2:-2] # the last two tokens are <extra_id_0> and <eos> and not moved
-        labels = torch.cat((labels[0][0].unsqueeze(0), to_move, labels[0][1:]), dim=0) # the first token is <extra_id_0> and not moved
-        input_ids = torch.cat((input_ids[0][:-offset-2], input_ids[0][-2:]), dim=0)
-        input_ids = input_ids.unsqueeze(0)
-    else:
-        # squeeze the batch dimension
-        labels = labels[0]
-        input_ids = input_ids[0]
+    assert offset != 0
+
+    # when offset is used, we move the last offset tokens from input_ids to the front of labels.
+    to_move = input_ids[0][-offset-2:-2] # the last two tokens are <extra_id_0> and <eos> and not moved
+    labels = torch.cat((labels[0][0].unsqueeze(0), to_move, labels[0][1:]), dim=0) # the first token is <extra_id_0> and not moved
+    input_ids = torch.cat((input_ids[0][:-offset-2], input_ids[0][-2:]), dim=0)
+    input_ids = input_ids.unsqueeze(0)
+        
     if to_gpu:
         return (input_ids.cuda(), labels.cuda())
     else:
@@ -176,6 +174,7 @@ def create_offset_sample_from_batch(
         offset,
         to_gpu
     )[0]
+
     labels_return = [
         create_offset_sample(
             input_ids,
@@ -191,10 +190,6 @@ def create_offset_sample_from_batch(
                         padding_value=tokenizer.pad_token_id
                     )
     return input_ids_return, labels_return
-
-
-
-
 
 
 def multi_labels_forward(

@@ -1,0 +1,291 @@
+{
+    "workbench.colorTheme": "Default Dark+",
+    "remote.extensionKind": {
+        "GitHub.copilot": [ "ui" ],
+    },
+    "remote.SSH.remotePlatform": {
+        "155.69.144.20": "linux",
+        "login2.ls6.tacc.utexas.edu": "linux",
+        "34.71.192.81": "linux",
+        "35.232.51.48": "linux",
+        "35.223.187.8": "linux",
+        "34.171.173.157": "linux",
+        "35.225.63.20": "linux",
+        "35.202.249.50": "linux",
+        "35.193.188.9": "linux",
+        "34.171.234.200": "linux",
+        "34.68.217.244": "linux",
+        "162.222.176.118": "linux",
+        "35.224.171.228": "linux",
+        "34.133.66.26": "linux",
+        "34.170.253.223": "linux",
+        "34.133.69.168": "linux",
+        "34.132.226.141": "linux",
+        "c303-003": "linux",
+        "c302-001": "linux",
+        "c303-004": "linux",
+        "c317-012": "linux",
+        "c305-001": "linux",
+        "c310-001": "linux",
+        "hpc-ai-01.d2.comp.nus.edu.sg": "linux",
+        "c305-004": "linux",
+        "c316-013": "linux",
+        "c303-002": "linux",
+        "c309-001": "linux",
+        "c315-004": "linux",
+        "c308-001": "linux",
+        "login-node": "linux",
+        "c315-007": "linux",
+        "c317-007": "linux",
+        "c302-003": "linux",
+        "c317-006": "linux",
+        "c317-013": "linux",
+        "c316-012": "linux",
+        "c310-002": "linux",
+        "c317-003": "linux",
+        "c315-011": "linux",
+        "c308-002": "linux",
+        "aspire2a.nus.edu.sg": "linux",
+        "c316-001": "linux",
+        "c305-002": "linux",
+        "x1000c2s3b0n1": "linux",
+        "asp2a-gpu002": "linux",
+        "asp2a-gpu003": "linux",
+        "x1000c3s4b0n0": "linux",
+        "x1000c3s4b0n1": "linux",
+        "x1000c2s7b0n1": "linux",
+        "x1000c2s1b0n1": "linux",
+        "c304-004": "linux",
+        "x1000c2s5b0n1": "linux",
+        "x1000c1s2b0n0": "linux",
+        "x1000c3s3b0n1": "linux",
+        "x1000c1s1b0n0": "linux",
+        "x1000c2s6b0n1": "linux",
+        "asp2a-gpu015": "linux",
+        "asp2a-gpu013": "linux",
+        "asp2a-gpu009": "linux",
+        "asp2a-gpu016": "linux",
+        "c316-002": "linux",
+        "x1000c0s5b0n1": "linux",
+        "asp2a-gpu018": "linux",
+        "10.0.1.108": "linux",
+        "10.0.1.73": "linux",
+        "x1000c0s0b0n0": "linux",
+        "x1000c2s4b0n1": "linux",
+        "10.0.50.2": "linux",
+        "x1000c2s7b0n0": "linux",
+        "x1000c3s2b0n1": "linux",
+        "x1000c2s3b0n0": "linux",
+        "x1000c3s7b0n1": "linux",
+        "asp2a-gpu001": "linux",
+        "x1000c3s6b0n0": "linux",
+        "x1000c3s1b0n0": "linux",
+        "x1000c3s0b0n1": "linux",
+        "x1000c1s5b0n0": "linux",
+        "x1000c2s0b0n0": "linux",
+        "x1000c2s0b0n1": "linux",
+        "x1000c2s5b0n0": "linux",
+        "x1000c1s4b0n1": "linux",
+        "x1000c0s6b0n0": "linux",
+        "x1000c0s3b0n0": "linux",
+        "x1000c3s0b0n0": "linux",
+        "x1000c0s1b0n0": "linux",
+        "x1000c0s7b0n1": "linux",
+        "x1000c2s1b0n0": "linux",
+        "x1001c0s0b0n0": "linux",
+        "x1000c1s5b0n1": "linux",
+        "x1000c0s5b0n0": "linux",
+        "asp2a-gpu007": "linux",
+        "x1000c3s1b0n1": "linux",
+        "x1000c2s2b0n0": "linux",
+        "x1000c3s5b0n0": "linux",
+        "asp2a-gpu017": "linux",
+        "x1000c1s0b0n1": "linux",
+        "yunan": "linux"
+    },
+    "editor.inlineSuggest.enabled": true,
+    "github.copilot.enable": {
+        "*": true,
+        "plaintext": false,
+        "markdown": false,
+        "scminput": false,
+        "yaml": false,
+        "python": true
+    },
+    "remote.SSH.lockfilesInTmp": true,
+    "git.autofetch": true,
+    "http.proxyAuthorization": null,
+    "[python]": {
+        "editor.formatOnType": true
+    },
+    "github.copilot.advanced": {
+
+        
+    },
+    "remote.SSH.defaultForwardedPorts": [
+    
+    ],
+    "workbench.startupEditor": "none",
+    "interactiveSession.editor.wordWrap": "on",
+    "diffEditor.wordWrap": "on",
+    "editor.wordWrap": "on",
+    "workbench.editorAssociations": {
+        "*.csv": "default"
+    },
+    "editor.accessibilitySupport": "off",
+    "jupyter.askForKernelRestart": false,
+    "multiCommand.commands": [
+        {
+            "command": "InsertTextRunCellTrue",
+            "sequence": [
+                {
+                    "command": "type",
+                    "args": {
+                        "text": "RUN_CELL = True "
+                    }
+                }
+            ]
+        },
+        {
+            "command": "InsertTextFalse",
+            "sequence": [
+                {
+                    "command": "type",
+                    "args": {
+                        "text": "False"
+                    }
+                }
+            ]
+        },
+        {
+            "command": "InsertTextTrue",
+            "sequence": [
+                {
+                    "command": "type",
+                    "args": {
+                        "text": "True"
+                    }
+                }
+            ]
+        },
+        {
+            "command": "InsertTextRunCellFalse",
+            "sequence": [
+                {
+                    "command": "type",
+                    "args": {
+                        "text": "RUN_CELL = False"
+                    }
+                }
+            ]
+        },
+        {
+            "command": "cursorMove8LinesDown",
+            "sequence": [
+                {
+                    "command": "cursorMove",
+                    "args": {
+                        "to": "down",
+                        "by": "line",
+                        "value": 8
+                    },
+                    "when": "editorTextFocus"
+                }
+            ]
+        },
+        {
+            "command": "cursorMove8LinesUp",
+            "sequence": [
+                {
+                    "command": "cursorMove",
+                    "args": {
+                        "to": "up",
+                        "by": "line",
+                        "value": 8
+                    },
+                    "when": "editorTextFocus"
+                }
+            ]
+        },
+        {
+            "command": "cursorMove100charRight",
+            "sequence": [
+                {
+                    "command": "cursorMove",
+                    "args": {
+                        "to": "right",
+                        "by": "character",
+                        "value": 100
+                    },
+                    "when": "editorTextFocus"
+                }
+            ]
+        },
+        {
+            "command": "cursorMove1000LinesUp",
+            "sequence": [
+                {
+                    "command": "cursorMove",
+                    "args": {
+                        "to": "up",
+                        "by": "line",
+                        "value": 1000
+                    },
+                    "when": "editorTextFocus"
+                }
+            ]
+        },   
+        // delete right 16 chars
+        {
+            "command": "deleteRight16Chars",
+            "sequence": [
+                {
+
+                    "command": "repeat-commands.runSequence",
+                    "args": {
+                            "commands": [                            // these will be repeated
+                            "deleteRight",
+                        ],
+                        "repeat": 16,   // hard-coded amount to repeat the 'commands``
+                    },
+                    "when": "editorTextFocus"
+                }
+            ]
+        },
+        // delete right 4 chars
+        {
+            "command": "deleteRight4Chars",
+            "sequence": [
+                {
+
+                    "command": "repeat-commands.runSequence",
+                    "args": {
+                            "commands": [                            // these will be repeated
+                            "deleteRight",
+                        ],
+                        "repeat": 4,   // hard-coded amount to repeat the 'commands``
+                    },
+                    "when": "editorTextFocus"
+                }
+            ]
+        },
+        // delete right 5 chars
+        {
+            "command": "deleteRight5Chars",
+            "sequence": [
+                {
+
+                    "command": "repeat-commands.runSequence",
+                    "args": {
+                            "commands": [                            // these will be repeated
+                            "deleteRight",
+                        ],
+                        "repeat": 5,   // hard-coded amount to repeat the 'commands``
+                    },
+                    "when": "editorTextFocus"
+                }
+            ]
+        },
+    ],
+    "jupyter.debugJustMyCode": false
+}
