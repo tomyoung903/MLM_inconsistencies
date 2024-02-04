@@ -131,7 +131,7 @@ def create_offset_sample(input_ids: torch.Tensor, # 2D: 1*len
                         offset=0,
                         to_gpu=False) -> Tuple[torch.Tensor, torch.Tensor]:
     '''
-    Move the last offset tokens from input_ids to the front of labels.
+    Move the last offset tokens from input_ids to the front of labels when offset > 0. Otherwise, move the first offset tokens from labels to the end of input_ids.
 
     input_ids (1*len) == input_regular_tokens, extra_id_0, eos_token_id
     
@@ -141,15 +141,20 @@ def create_offset_sample(input_ids: torch.Tensor, # 2D: 1*len
 
     (input_ids, labels) applied offset; input_ids is 2D Tensor and labels is 1D Tensor
     '''
-    labels = labels.unsqueeze(0)
-    assert offset != 0
-
-    # when offset is used, we move the last offset tokens from input_ids to the front of labels.
-    to_move = input_ids[0][-offset-2:-2] # the last two tokens are <extra_id_0> and <eos> and not moved
-    labels = torch.cat((labels[0][0].unsqueeze(0), to_move, labels[0][1:]), dim=0) # the first token is <extra_id_0> and not moved
-    input_ids = torch.cat((input_ids[0][:-offset-2], input_ids[0][-2:]), dim=0)
-    input_ids = input_ids.unsqueeze(0)
-        
+    if offset > 0:
+        # when positive offset is used, we move the last offset tokens from input_ids to the front of labels.
+        assert offset < len(input_ids[0]) - 5, "offset cannot be too large; leave at least 5 tokens in input_ids"
+        to_move = input_ids[0][-offset-2:-2] # the last two tokens are <extra_id_0> and <eos> and not moved
+        labels = torch.cat((labels[0].unsqueeze(0), to_move, labels[1:])) # the first token is <extra_id_0> and not moved
+        input_ids = torch.cat((input_ids[0][:-offset-2], input_ids[0][-2:]))
+        input_ids = input_ids.unsqueeze(0)
+    elif offset < 0:
+        # when negative offset is used, we move the first offset tokens from labels to the end of input_ids.
+        assert -offset < len(labels[1:]), "offset cannot be too large; leave at least 1 token in labels"
+        to_move = labels[1:-offset+1]
+        labels = torch.cat((labels[0].unsqueeze(0), labels[-offset+1:]))
+        input_ids = torch.cat((input_ids[0][:-2], to_move, input_ids[0][-2:]))
+        input_ids = input_ids.unsqueeze(0)
     if to_gpu:
         return (input_ids.cuda(), labels.cuda())
     else:
@@ -159,7 +164,7 @@ def create_offset_sample(input_ids: torch.Tensor, # 2D: 1*len
 def create_offset_sample_from_batch(
         tokenizer,
         input_ids: torch.Tensor, #  2D: 1*len
-        completions_batch: List[torch.Tensor], 
+        completions_batch: torch.Tensor, # 2D: no_completions * len 
         offset: int = 0,
         to_gpu: bool = False
 ) -> Tuple[torch.Tensor, torch.Tensor]:

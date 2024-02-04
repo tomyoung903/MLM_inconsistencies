@@ -4,7 +4,10 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer
 
-def tokenize_input_and_completions(input_: str, completions: list[str], tokenizer: AutoTokenizer) -> Tuple[torch.Tensor, torch.Tensor]:
+def tokenize_input_and_completions(input_: str, 
+                                   completions: list[str], 
+                                   tokenizer: AutoTokenizer,
+                                   pad_to_2d_tensor: True) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Tokenize input and completions with a given tokenizer.
     
@@ -18,8 +21,24 @@ def tokenize_input_and_completions(input_: str, completions: list[str], tokenize
     """
     input_ids = tokenizer(input_, return_tensors="pt").input_ids
     completions_ids = [tokenizer(completion, return_tensors="pt").input_ids[0, :-1] for completion in completions] # squeeze 1st dim and remove <eos> token with [0,:-1]
-    completions_ids_padded = pad_sequence(completions_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
-    return input_ids, completions_ids_padded
+    if pad_to_2d_tensor:
+        completions_ids = pad_sequence(completions_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+    return input_ids, completions_ids
+
+
+def append_special_tokens(input_: str, completions: list[str], mode: str) -> Tuple[str, list[str]]:
+    """
+    Append special tokens to input and completions based on the mode.
+    """
+    if mode == "[NLG]":
+        input_ = f"{mode} {input_} <extra_id_0>"
+        completions = [completion + " <extra_id_0>" for completion in completions]
+    elif mode == "T5":
+        input_ = f"{input_} <extra_id_0>"
+        completions = [completion + " <extra_id_0>" for completion in completions]
+    else:
+        raise ValueError("mode not defined")
+    return input_, completions
 
 
 class DatasetProcessor:
@@ -37,7 +56,7 @@ class DatasetProcessor:
         # if subset is str
         if isinstance(self.subset, str):
             data = load_dataset(self.dataset_path, self.subset)[set_partition]
-        elif self is None:
+        elif self.subset is None:
             data = load_dataset(self.dataset_path)[set_partition]
         elif isinstance(self.subset, list):
             all_datasets = [load_dataset(self.dataset_path, subset)[set_partition] for subset in self.subset]
@@ -49,28 +68,32 @@ class DatasetProcessor:
             data = data.select(range(first_k_instances))
         return data
 
-    def example_generator(self, docs, tokenizer, ul2_mode='[NLG]', tensors_filtering_criterion=None) -> Tuple:
+    def example_generator(self, docs, tokenizer, mode='[NLG]', tensors_filtering_criterion=None, pad_to_2d_tensor=True) -> Tuple:
         """
         Generate examples from the dataset.
+        Args:
+        - docs: dataset by get_dataset()
+        - tensors_filtering_criterion: a function that takes input_ids and completions_ids as input and returns True/False
+        - pad_to_2d_tensor: whether to pad completions_ids to a 2d tensor
         """
         example_id = 0
         for doc in docs:
-            input_, completions = self.prepare_input_and_completions(doc, ul2_mode)
-            input_ids, completions_ids_padded = tokenize_input_and_completions(input_, completions, tokenizer)
+            input_, completions = self._prepare_input_and_completions(doc, mode)
+            input_ids, completions_ids = tokenize_input_and_completions(input_, completions, tokenizer, pad_to_2d_tensor)
             
-            if tensors_filtering_criterion and not tensors_filtering_criterion(input_ids, completions_ids_padded):
+            if tensors_filtering_criterion and not tensors_filtering_criterion(input_ids, completions_ids):
                 continue
             
-            yield example_id, input_ids, completions_ids_padded, self.get_ground_truth_index(doc)
+            yield example_id, input_ids, completions_ids, self._get_ground_truth_index(doc)
             example_id += 1
 
-    def prepare_input_and_completions(self, doc, ul2_mode: str) -> Tuple[str, list]:
+    def _prepare_input_and_completions(self, doc, mode: str) -> Tuple[str, list]:
         """
-        Prepare input and completions based on the dataset and UL2 mode.
+        Prepare input and completions based on the dataset and the mode.
         """
         raise NotImplementedError("This method should be implemented by subclasses.")
 
-    def get_ground_truth_index(self, doc) -> int:
+    def _get_ground_truth_index(self, doc) -> int:
         """
         Get the index of the ground truth completion.
         """
@@ -78,16 +101,30 @@ class DatasetProcessor:
 
 
 class HellaswagProcessor(DatasetProcessor):
+    '''
+    Hellaswag's test partition is unlabeled.
+    '''
     def __init__(self):
         super().__init__(dataset_path="Rowan/hellaswag")
 
-    def prepare_input_and_completions(self, doc, ul2_mode: str) -> Tuple[str, list]:
-        endings_list = doc['endings']
-        input_ = f"{ul2_mode} {doc['activity_label']}: {doc['ctx']} <extra_id_0>"
-        completions = [f"<extra_id_0> {ending}" if ul2_mode == "[NLG]" else f"{ending}" for ending in endings_list]
+    # the test partition is unlabeled
+    def get_dataset(self, set_partition: str, *args, **kwargs):
+        assert set_partition != "test", "The test partition is unlabeled."
+        return super().get_dataset(set_partition, *args, **kwargs)
+
+    def _prepare_input_and_completions(self, doc, mode: str) -> Tuple[str, list]:
+        # endings_list = doc['endings']
+        # if mode == "[NLG]":
+        #     input_ = f"{mode} {doc['activity_label']}: {doc['ctx']} <extra_id_0>"
+        # elif mode is 'T5':
+        #     input_ = f"{doc['activity_label']}: {doc['ctx']} <extra_id_0>"
+        # else:
+        #     raise ValueError("mode not defined")
+        # completions = [f"<extra_id_0> {ending}" for ending in endings_list]
+        input_, completions = append_special_tokens(f"{doc['activity_label']}: {doc['ctx']}", doc['endings'], mode)
         return input_, completions
 
-    def get_ground_truth_index(self, doc) -> int:
+    def _get_ground_truth_index(self, doc) -> int:
         return int(doc['label'])
 
 
@@ -96,21 +133,23 @@ class ARCProcessor(DatasetProcessor):
         # for ai2_arc, subset can be "ARC-Easy", "ARC-Challenge"
         super().__init__(dataset_path="ai2_arc", subset="ARC-Challenge")
 
-    def prepare_input_and_completions(self, doc, ul2_mode: str) -> Tuple[str, list]:
+    def _prepare_input_and_completions(self, doc, mode: str) -> Tuple[str, list]:
         """
         Prepare input and completions specific to the ARC dataset.
         """
         texts = doc['choices']['text']
-        input_ = f"{ul2_mode} Question: {doc['question']} <extra_id_0>"
-        if ul2_mode == "[NLG]":
+        if mode == "[NLG]":
+            input_ = f"{mode} Question: {doc['question']} <extra_id_0>"
+        elif mode == "T5":
+            input_ = f"Question: {doc['question']} <extra_id_0>"    
+
+        if mode == "[NLG]" or mode == "T5":
             completions = [f"<extra_id_0> Answer: {text}" for text in texts]
-        elif ul2_mode == "[S2S]":
+        elif mode == "[S2S]":
             completions = [f"Answer: {text}" for text in texts]
-        else:
-            raise ValueError("ul2_mode not defined")
         return input_, completions
 
-    def get_ground_truth_index(self, doc) -> int:
+    def _get_ground_truth_index(self, doc) -> int:
         """
         Get the index of the ground truth answer for the ARC dataset.
         """
@@ -133,18 +172,48 @@ class MMLUProcessor(DatasetProcessor):
             'high_school_macroeconomics', 'computer_security', 'moral_scenarios', 'moral_disputes', 'electrical_engineering', 'astronomy', 'college_biology']
         super().__init__(dataset_path="lukaemon/mmlu", subset=SUBJECTS)
 
-    def prepare_input_and_completions(self, doc, ul2_mode: str) -> Tuple[str, list]:
+    def _prepare_input_and_completions(self, doc, mode: str) -> Tuple[str, list]:
         """
         Prepare input and completions specific to the MMLU dataset.
         """
         keys = ["A", "B", "C", "D"]
-        input_ = ul2_mode + " " + doc['input'] + " " + "<extra_id_0>"
+        if mode == "[NLG]":
+            input_ = mode + " " + doc['input'] + " " + "<extra_id_0>"
+        elif mode == "T5":
+            input_ = doc['input'] + " " + "<extra_id_0>"
+        else:
+            raise ValueError("mode not defined")
         completions = [f"<extra_id_0> {doc[key]}" for key in keys]
         return input_, completions
 
-    def get_ground_truth_index(self, doc) -> int:
+    def _get_ground_truth_index(self, doc) -> int:
         """
         Get the index of the ground truth answer for the MMLU dataset.
         """
         key_to_index = {"A":0, "B":1, "C":2, "D":3}
         return key_to_index[doc['target']]
+
+
+class TruthfulQAProcessor(DatasetProcessor):
+    '''
+        TruthfulQA is a multiple-choice question answering dataset. We currently use the mc2_targets field to get answers.
+    '''
+    def __init__(self):
+        super().__init__(dataset_path="truthful_qa")
+
+    def _prepare_input_and_completions(self, doc, mode: str) -> Tuple[str, list]:
+        if mode == "[NLG]":
+            input_ = f"{mode} {doc['question']} <extra_id_0>"
+        elif mode == "T5":
+            input_ = f"{doc['question']} <extra_id_0>"
+        else:
+            raise ValueError("mode not defined")
+        answers_list = doc["mc2_targets"]['choices'] 
+        if mode == "[NLG]" or mode == "T5":
+            completions = [f"<extra_id_0> {answer}" for answer in answers_list]
+        return input_, completions
+    
+    def _get_ground_truth_index(self, doc) -> int:
+        ground_truth_indices = [i for i, label in enumerate(doc["mc2_targets"]['labels']) if label == 1]
+
+        return doc["mc2_targets"]['labels']
