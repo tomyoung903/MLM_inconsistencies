@@ -36,6 +36,8 @@ def append_special_tokens(input_: str, completions: list[str], mode: str) -> Tup
     elif mode == "T5":
         input_ = f"{input_} <extra_id_0>"
         completions = [completion + " <extra_id_0>" for completion in completions]
+    elif mode == "Flan-UL2":
+        pass
     else:
         raise ValueError("mode not defined")
     return input_, completions

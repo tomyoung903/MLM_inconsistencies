@@ -133,25 +133,34 @@ def create_offset_sample(input_ids: torch.Tensor, # 2D: 1*len
     '''
     Move the last offset tokens from input_ids to the front of labels when offset > 0. Otherwise, move the first offset tokens from labels to the end of input_ids.
 
-    input_ids (1*len) == input_regular_tokens, extra_id_0, eos_token_id
+    input_ids (1*len) == input_regular_tokens, extra_id_0 (for T5 and UL2), eos_token_id
     
-    labels (len) == extra_id_0 + labels_regular_tokens
+    labels (len) == extra_id_0 (for T5 and UL2) + labels_regular_tokens
 
     Returns:
 
     (input_ids, labels) applied offset; input_ids is 2D Tensor and labels is 1D Tensor
     '''
+    # check if the first token in labels is <extra_id_0>
+    extra_id_0 = 32099
+    if labels[0] != extra_id_0: # for Flan-UL2
+        num_ignore_input = 1 # ignore the last few tokens in input_ids
+        num_ignore_labels = 0 
+    else: # for T5 and UL2
+        num_ignore_input = 2 
+        num_ignore_labels = 1 # ignore the first token in labels
+
     if offset > 0:
         # when positive offset is used, we move the last offset tokens from input_ids to the front of labels.
         assert offset < len(input_ids[0]) - 5, "offset cannot be too large; leave at least 5 tokens in input_ids"
         to_move = input_ids[0][-offset-2:-2] # the last two tokens are <extra_id_0> and <eos> and not moved
         labels = torch.cat((labels[0].unsqueeze(0), to_move, labels[1:])) # the first token is <extra_id_0> and not moved
-        input_ids = torch.cat((input_ids[0][:-offset-2], input_ids[0][-2:]))
-        input_ids = input_ids.unsqueeze(0)
+        input_ids = torch.cat((input_ids[:,:-offset-2], input_ids[:,-2:]), dim=1)
+
     elif offset < 0:
         # when negative offset is used, we move the first offset tokens from labels to the end of input_ids.
         assert -offset < len(labels[1:]), "offset cannot be too large; leave at least 1 token in labels"
-        to_move = labels[1:-offset+1]
+        to_move = labels[1:-offset+1] # the first token is <extra_id_0> and not moved
         labels = torch.cat((labels[0].unsqueeze(0), labels[-offset+1:]))
         input_ids = torch.cat((input_ids[0][:-2], to_move, input_ids[0][-2:]))
         input_ids = input_ids.unsqueeze(0)
