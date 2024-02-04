@@ -113,16 +113,7 @@ class HellaswagProcessor(DatasetProcessor):
         return super().get_dataset(set_partition, *args, **kwargs)
 
     def _prepare_input_and_completions(self, doc, mode: str) -> Tuple[str, list]:
-        # endings_list = doc['endings']
-        # if mode == "[NLG]":
-        #     input_ = f"{mode} {doc['activity_label']}: {doc['ctx']} <extra_id_0>"
-        # elif mode is 'T5':
-        #     input_ = f"{doc['activity_label']}: {doc['ctx']} <extra_id_0>"
-        # else:
-        #     raise ValueError("mode not defined")
-        # completions = [f"<extra_id_0> {ending}" for ending in endings_list]
-        input_, completions = append_special_tokens(f"{doc['activity_label']}: {doc['ctx']}", doc['endings'], mode)
-        return input_, completions
+        return append_special_tokens(f"{doc['activity_label']}: {doc['ctx']}", doc['endings'], mode)
 
     def _get_ground_truth_index(self, doc) -> int:
         return int(doc['label'])
@@ -138,16 +129,8 @@ class ARCProcessor(DatasetProcessor):
         Prepare input and completions specific to the ARC dataset.
         """
         texts = doc['choices']['text']
-        if mode == "[NLG]":
-            input_ = f"{mode} Question: {doc['question']} <extra_id_0>"
-        elif mode == "T5":
-            input_ = f"Question: {doc['question']} <extra_id_0>"    
-
-        if mode == "[NLG]" or mode == "T5":
-            completions = [f"<extra_id_0> Answer: {text}" for text in texts]
-        elif mode == "[S2S]":
-            completions = [f"Answer: {text}" for text in texts]
-        return input_, completions
+        completions = [f"Answer: {text}" for text in texts]
+        return append_special_tokens(f"Question: {doc['question']}", completions, mode)
 
     def _get_ground_truth_index(self, doc) -> int:
         """
@@ -177,14 +160,8 @@ class MMLUProcessor(DatasetProcessor):
         Prepare input and completions specific to the MMLU dataset.
         """
         keys = ["A", "B", "C", "D"]
-        if mode == "[NLG]":
-            input_ = mode + " " + doc['input'] + " " + "<extra_id_0>"
-        elif mode == "T5":
-            input_ = doc['input'] + " " + "<extra_id_0>"
-        else:
-            raise ValueError("mode not defined")
-        completions = [f"<extra_id_0> {doc[key]}" for key in keys]
-        return input_, completions
+        completions = [doc[key] for key in keys]
+        return append_special_tokens(doc['input'], completions, mode)
 
     def _get_ground_truth_index(self, doc) -> int:
         """
@@ -202,18 +179,8 @@ class TruthfulQAProcessor(DatasetProcessor):
         super().__init__(dataset_path="truthful_qa")
 
     def _prepare_input_and_completions(self, doc, mode: str) -> Tuple[str, list]:
-        if mode == "[NLG]":
-            input_ = f"{mode} {doc['question']} <extra_id_0>"
-        elif mode == "T5":
-            input_ = f"{doc['question']} <extra_id_0>"
-        else:
-            raise ValueError("mode not defined")
-        answers_list = doc["mc2_targets"]['choices'] 
-        if mode == "[NLG]" or mode == "T5":
-            completions = [f"<extra_id_0> {answer}" for answer in answers_list]
-        return input_, completions
-    
-    def _get_ground_truth_index(self, doc) -> int:
-        ground_truth_indices = [i for i, label in enumerate(doc["mc2_targets"]['labels']) if label == 1]
+        return append_special_tokens(doc['question'], doc["mc2_targets"]['choices'], mode)
 
-        return doc["mc2_targets"]['labels']
+    def _get_ground_truth_index(self, doc) -> Union[int, List[int]]:
+        ground_truth_indices = [i for i, label in enumerate(doc["mc2_targets"]['labels']) if label == 1]
+        return ground_truth_indices
