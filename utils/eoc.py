@@ -153,17 +153,23 @@ def create_offset_sample(input_ids: torch.Tensor, # 2D: 1*len
     if offset > 0:
         # when positive offset is used, we move the last offset tokens from input_ids to the front of labels.
         assert offset < len(input_ids[0]) - 5, "offset cannot be too large; leave at least 5 tokens in input_ids"
-        to_move = input_ids[0][-offset-2:-2] # the last two tokens are <extra_id_0> and <eos> and not moved
-        labels = torch.cat((labels[0].unsqueeze(0), to_move, labels[1:])) # the first token is <extra_id_0> and not moved
-        input_ids = torch.cat((input_ids[:,:-offset-2], input_ids[:,-2:]), dim=1)
+        to_move = input_ids[0][-offset-num_ignore_input:-num_ignore_input] # the last two tokens are <extra_id_0> and <eos> and not moved
+        if num_ignore_labels == 1:
+            labels = torch.cat((labels[0].unsqueeze(0), to_move, labels[1:])) # the first token is <extra_id_0> and not moved
+        else:
+            labels = torch.cat((to_move, labels))
+        input_ids = torch.cat((input_ids[:,:-offset-num_ignore_input], input_ids[:,-num_ignore_input:]), dim=1)
 
     elif offset < 0:
         # when negative offset is used, we move the first offset tokens from labels to the end of input_ids.
-        assert -offset < len(labels[1:]), "offset cannot be too large; leave at least 1 token in labels"
-        to_move = labels[1:-offset+1] # the first token is <extra_id_0> and not moved
-        labels = torch.cat((labels[0].unsqueeze(0), labels[-offset+1:]))
-        input_ids = torch.cat((input_ids[0][:-2], to_move, input_ids[0][-2:]))
-        input_ids = input_ids.unsqueeze(0)
+        assert -offset < len(labels[1:]), "offset cannot be too large; leave at least 1 token in labels" # TODO change this
+        to_move = labels[num_ignore_labels:-offset+num_ignore_labels] # if the first token is <extra_id_0> it is not moved
+        if num_ignore_labels == 1:
+            labels = torch.cat((labels[0].unsqueeze(0), labels[-offset+num_ignore_labels:]))
+        else:
+            labels = labels[-offset+num_ignore_labels:]
+        input_ids = torch.cat((input_ids[:,:-num_ignore_input], to_move.unsqueeze(0), input_ids[:,-num_ignore_input:]), dim=1)
+
     if to_gpu:
         return (input_ids.cuda(), labels.cuda())
     else:
