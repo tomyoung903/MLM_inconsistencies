@@ -9,7 +9,7 @@ def tokenize_input_and_completions(input_: str,
                                    tokenizer: AutoTokenizer,
                                    pad_to_2d_tensor: True) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Tokenize input and completions with a given tokenizer.
+    Tokenize input and completions with a given tokenizer. The <eos> token is removed from completions.
     
     Args:
     - input_ (str): The input string.
@@ -32,10 +32,10 @@ def append_special_tokens(input_: str, completions: list[str], mode: str) -> Tup
     """
     if mode == "[NLG]":
         input_ = f"{mode} {input_} <extra_id_0>"
-        completions = [completion + " <extra_id_0>" for completion in completions]
+        completions = [f"<extra_id_0> {completion}" for completion in completions]
     elif mode == "T5":
         input_ = f"{input_} <extra_id_0>"
-        completions = [completion + " <extra_id_0>" for completion in completions]
+        completions = [f"<extra_id_0> {completion}" for completion in completions]
     elif mode == "Flan-UL2":
         pass
     else:

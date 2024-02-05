@@ -144,3 +144,7 @@ def hash_object(obj):
     hash_obj = hashlib.sha256(serialized_obj).hexdigest()
     print(f"SHA-256 hash: {hash_obj}")
     return hash_obj
+
+def remove_trailing_zeros_from_1d_tensor(tensor):
+    ''' Remove trailing zeros from a 1D tensor '''
+    return tensor[:torch.max(torch.nonzero(tensor)).item() + 1]
