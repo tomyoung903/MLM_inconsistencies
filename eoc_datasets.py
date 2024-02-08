@@ -178,7 +178,7 @@ class TruthfulQAProcessor(DatasetProcessor):
         TruthfulQA is a multiple-choice question answering dataset. We currently use the mc2_targets field to get answers.
     '''
     def __init__(self):
-        super().__init__(dataset_path="truthful_qa")
+        super().__init__(dataset_path="truthful_qa", subset="multiple_choice")
 
     def _prepare_input_and_completions(self, doc, mode: str) -> Tuple[str, list]:
         return append_special_tokens(doc['question'], doc["mc2_targets"]['choices'], mode)
