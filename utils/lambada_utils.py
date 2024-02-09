@@ -236,44 +236,6 @@ class LambadaProcessor:
         return dataset_offset
 
 
-    def get_offset_samples_jan26backup(self,
-                           id_to_completions_ids: Dict[int, List],
-                           max_offset=5,
-                           to_gpu=False):
-        '''add offset to the samples'''
-        dataset_offset = {}
-        for example_id in tqdm(range(len(id_to_completions_ids))):
-            if len(id_to_completions_ids[example_id]) == 0:
-                continue
-            for offset in range(max_offset):
-                # get input_ids, which is identical for all completions
-                input_ids = self.create_offset_sample(
-                    self.dataset[example_id]['inputs'],
-                    id_to_completions_ids[example_id][0], # any completion is fine to get the input_ids
-                    offset=offset,
-                    to_gpu=to_gpu,
-                )[0]
-                labels = [
-                    self.create_offset_sample(
-                        self.dataset[example_id]['inputs'],
-                        completion,
-                        offset=offset,
-                        to_gpu=to_gpu,
-                    )[1]
-                    for completion in id_to_completions_ids[example_id]
-                ]
-                # pad into a single tensor
-                labels = torch.nn.utils.rnn.pad_sequence(
-                    labels, batch_first=True, padding_value=self.tokenizer.pad_token_id)
-                dataset_offset[(example_id, offset)] = {
-                    "inputs": input_ids,
-                    "labels": labels
-                }
-                    
-        return dataset_offset
-
-
-
     def create_middle_off_sample(self,
                                 inputs: str,
                                 labels: torch.Tensor, # 1D
