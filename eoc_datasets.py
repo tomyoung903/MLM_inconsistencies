@@ -186,3 +186,27 @@ class TruthfulQAProcessor(DatasetProcessor):
     def _get_ground_truth_index(self, doc) -> Union[int, List[int]]:
         ground_truth_indices = [i for i, label in enumerate(doc["mc2_targets"]['labels']) if label == 1]
         return ground_truth_indices
+    
+
+class BigBenchProcessor(DatasetProcessor):
+    '''
+    We select multiple-choice subsets from BigBench for easy evaluation.
+    '''
+    def __init__(self, subjects=None):
+        if subjects is None:
+            subjects = ['tracking_shuffled_objects_seven_objects', 'salient_translation_error_detection', 'tracking_shuffled_objects_three_objects', 'logical_deduction_five_objects', 'hyperbaton', 'logical_deduction_seven_objects', 'logical_deduction_three_objects', 'snarks', 'disambiguation_qa', 'temporal_sequences', 'tracking_shuffled_objects_five_objects', 'penguins_in_a_table', 'date_understanding']
+        
+        super().__init__(dataset_path="maveriq/bigbenchhard", subset=subjects)
+    
+    def _prepare_input_and_completions(self, doc, mode: str) -> Tuple[str, list]:
+        input, completions = doc['input'].split("Options:\n")
+        if input.endswith("\n"):
+            input = input[:-1]
+        # Splitting the options part by newline to get each option
+        completions = completions.split("\n")
+        completions = [completion[4:] for completion in completions]
+        return append_special_tokens(input, completions, mode)
+
+    def _get_ground_truth_index(self, doc) -> int:
+        key_to_index = {"(A)":0, "(B)":1, "(C)":2, "(D)":3, "(E)":4, "(F)":5, "(G)":6, "(H)":7, "(I)":8, "(J)":9}
+        return key_to_index[doc['target']]
