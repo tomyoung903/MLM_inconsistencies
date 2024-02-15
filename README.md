@@ -14,3 +14,26 @@ python 3.11
 
 We are doing more experiments on this topic at the moment. Leave a comment under ''issues'' for questions/discussion.
 
+
+# Strategy for different punctuations
+
+click to expand
+In the LAMBADA last word prediction task, natural language models (LLMs) may append various punctuations to the same last word, leading to different completions. For example, to complete the sentence "My color of my pet dog is":
+
+Possible Completions:
+
+white. with probability p_1
+white! with probability p_2 (assuming p_1 > p_2)
+black, with probability p_3
+black? with probability p_4 (assuming p_3 > p_4)
+Strategies to Rank white and black:
+
+Maximum Probability Strategy
+Probability of white: p(white) = p_1
+Probability of black: p(black) = p_3
+Sum of Probabilities Strategy
+Probability of white: p(white) = p_1 + p_2
+Probability of black: p(black) = p_3 + p_4
+Afterwards p(_white_) and p(_black_) may need normalization.
+
+WE ARE STICKING WITH MAXIMUM PROBABILITY STRAGEGY ACCORDING TO ACCURACIES OBTAINED FROM TRIAL RUNS.

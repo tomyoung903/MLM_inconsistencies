@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # File to append the output
-output_file="nvidia_watch.log"
+output_file="watch_nvidia.log"
 
 # Interval in seconds between checks
 interval=5

@@ -1,0 +1,154 @@
+nohup: ignoring input
+/home/nus-ytj/miniconda3/envs/inconsistencies/lib/python3.11/site-packages/transformers/models/t5/tokenization_t5_fast.py:160: FutureWarning: This tokenizer was incorrectly instantiated with a model max length of 512 which will be corrected in Transformers v5.
+For now, this behavior is kept to avoid breaking backwards compatibility when padding/encoding with `truncation is True`.
+- Be aware that you SHOULD NOT rely on t5-11b automatically truncating your input to 512 when padding/encoding.
+- If you want to encode/pad to sequences longer than 512 you can either instantiate this tokenizer with `model_max_length` or pass `max_length` when encoding/padding.
+- To avoid this warning, please instantiate this tokenizer with `model_max_length` set to your preferred value.
+  warnings.warn(
+Subject: tracking_shuffled_objects_seven_objects
+input len max: 200, min: 173, avg: 184.12
+completion len max: 9, min: 3, avg: 4.696
+NO_DISTS: 0, avg_acc: 0.1
+NO_DISTS: 1, avg_acc: 0.104
+NO_DISTS: 2, avg_acc: 0.10400000000000006
+NO_DISTS: 3, avg_acc: 0.10338095238095239
+NO_DISTS: 4, avg_acc: 0.10298412698412693
+NO_DISTS: 5, avg_acc: 0.10295238095238086
+NO_DISTS: 6, avg_acc: 0.10323809523809518
+NO_DISTS: 7, avg_acc: 0.10366666666666674
+NO_DISTS: 8, avg_acc: 0.104
+NO_DISTS: 9, avg_acc: 0.104
+Subject: salient_translation_error_detection
+input len max: 399, min: 190, avg: 238.26
+completion len max: 8, min: 8, avg: 8.0
+NO_DISTS: 0, avg_acc: 0.216
+NO_DISTS: 1, avg_acc: 0.21911111111111112
+NO_DISTS: 2, avg_acc: 0.2205555555555556
+NO_DISTS: 3, avg_acc: 0.2212857142857144
+NO_DISTS: 4, avg_acc: 0.22177777777777768
+NO_DISTS: 5, avg_acc: 0.2222222222222222
+NO_DISTS: 6, avg_acc: 0.2226666666666668
+NO_DISTS: 7, avg_acc: 0.2231111111111112
+NO_DISTS: 8, avg_acc: 0.22355555555555556
+NO_DISTS: 9, avg_acc: 0.224
+Subject: tracking_shuffled_objects_three_objects
+input len max: 110, min: 95, avg: 103.596
+completion len max: 9, min: 2, avg: 4.244
+NO_DISTS: 0, avg_acc: 0.32
+NO_DISTS: 1, avg_acc: 0.31155555555555553
+NO_DISTS: 2, avg_acc: 0.3088888888888889
+NO_DISTS: 3, avg_acc: 0.3075714285714285
+NO_DISTS: 4, avg_acc: 0.30631746031746027
+NO_DISTS: 5, avg_acc: 0.30501587301587296
+NO_DISTS: 6, avg_acc: 0.3037619047619048
+NO_DISTS: 7, avg_acc: 0.30255555555555563
+NO_DISTS: 8, avg_acc: 0.3013333333333333
+NO_DISTS: 9, avg_acc: 0.3
+Subject: logical_deduction_five_objects
+input len max: 130, min: 74, avg: 104.128
+completion len max: 13, min: 4, avg: 9.272
+NO_DISTS: 0, avg_acc: 0.204
+NO_DISTS: 1, avg_acc: 0.20755555555555555
+NO_DISTS: 2, avg_acc: 0.20800000000000002
+NO_DISTS: 3, avg_acc: 0.20852380952380956
+NO_DISTS: 4, avg_acc: 0.20946031746031749
+NO_DISTS: 5, avg_acc: 0.2110158730158731
+NO_DISTS: 6, avg_acc: 0.21309523809523812
+NO_DISTS: 7, avg_acc: 0.2154444444444445
+NO_DISTS: 8, avg_acc: 0.21777777777777776
+NO_DISTS: 9, avg_acc: 0.22
+Subject: hyperbaton
+No examples
+Subject: logical_deduction_seven_objects
+input len max: 164, min: 88, avg: 131.452
+completion len max: 13, min: 5, avg: 9.564
+NO_DISTS: 0, avg_acc: 0.144
+NO_DISTS: 1, avg_acc: 0.14844444444444443
+NO_DISTS: 2, avg_acc: 0.14911111111111114
+NO_DISTS: 3, avg_acc: 0.1491904761904761
+NO_DISTS: 4, avg_acc: 0.14946031746031732
+NO_DISTS: 5, avg_acc: 0.14996825396825386
+NO_DISTS: 6, avg_acc: 0.15057142857142855
+NO_DISTS: 7, avg_acc: 0.15111111111111114
+NO_DISTS: 8, avg_acc: 0.15155555555555555
+NO_DISTS: 9, avg_acc: 0.152
+Subject: logical_deduction_three_objects
+input len max: 91, min: 60, avg: 76.492
+completion len max: 13, min: 4, avg: 8.364
+NO_DISTS: 0, avg_acc: 0.424
+NO_DISTS: 1, avg_acc: 0.4035555555555555
+NO_DISTS: 2, avg_acc: 0.39033333333333337
+NO_DISTS: 3, avg_acc: 0.38185714285714295
+NO_DISTS: 4, avg_acc: 0.37539682539682545
+NO_DISTS: 5, avg_acc: 0.369968253968254
+NO_DISTS: 6, avg_acc: 0.36519047619047623
+NO_DISTS: 7, avg_acc: 0.3607777777777778
+NO_DISTS: 8, avg_acc: 0.35644444444444434
+NO_DISTS: 9, avg_acc: 0.352
+Subject: snarks
+No examples
+Subject: disambiguation_qa
+input len max: 71, min: 49, avg: 55.452
+completion len max: 11, min: 4, avg: 7.56
+NO_DISTS: 0, avg_acc: 0.624
+NO_DISTS: 1, avg_acc: 0.6222222222222222
+NO_DISTS: 2, avg_acc: 0.6204444444444444
+NO_DISTS: 3, avg_acc: 0.6186666666666665
+NO_DISTS: 4, avg_acc: 0.6168888888888885
+NO_DISTS: 5, avg_acc: 0.6151111111111108
+NO_DISTS: 6, avg_acc: 0.6133333333333331
+NO_DISTS: 7, avg_acc: 0.6115555555555554
+NO_DISTS: 8, avg_acc: 0.6097777777777778
+NO_DISTS: 9, avg_acc: 0.608
+Subject: temporal_sequences
+input len max: 152, min: 92, avg: 116.844
+completion len max: 6, min: 6, avg: 6.0
+NO_DISTS: 0, avg_acc: 0.312
+NO_DISTS: 1, avg_acc: 0.312
+NO_DISTS: 2, avg_acc: 0.31166666666666676
+NO_DISTS: 3, avg_acc: 0.3111904761904762
+NO_DISTS: 4, avg_acc: 0.31066666666666654
+NO_DISTS: 5, avg_acc: 0.3101269841269841
+NO_DISTS: 6, avg_acc: 0.30957142857142844
+NO_DISTS: 7, avg_acc: 0.309
+NO_DISTS: 8, avg_acc: 0.3084444444444444
+NO_DISTS: 9, avg_acc: 0.308
+Subject: tracking_shuffled_objects_five_objects
+input len max: 148, min: 129, avg: 140.004
+completion len max: 9, min: 3, avg: 4.588
+NO_DISTS: 0, avg_acc: 0.196
+NO_DISTS: 1, avg_acc: 0.19422222222222219
+NO_DISTS: 2, avg_acc: 0.19522222222222224
+NO_DISTS: 3, avg_acc: 0.1963333333333334
+NO_DISTS: 4, avg_acc: 0.1971746031746032
+NO_DISTS: 5, avg_acc: 0.19784126984126985
+NO_DISTS: 6, avg_acc: 0.19842857142857145
+NO_DISTS: 7, avg_acc: 0.19900000000000004
+NO_DISTS: 8, avg_acc: 0.19955555555555554
+NO_DISTS: 9, avg_acc: 0.2
+Subject: penguins_in_a_table
+input len max: 190, min: 98, avg: 129.6095890410959
+completion len max: 7, min: 2, avg: 3.0
+NO_DISTS: 0, avg_acc: 0.22602739726027396
+NO_DISTS: 1, avg_acc: 0.2305936073059361
+NO_DISTS: 2, avg_acc: 0.23211567732115668
+NO_DISTS: 3, avg_acc: 0.23295825179386848
+NO_DISTS: 4, avg_acc: 0.23380082626658
+NO_DISTS: 5, avg_acc: 0.23472494020439252
+NO_DISTS: 6, avg_acc: 0.23573059360730614
+NO_DISTS: 7, avg_acc: 0.23687214611872148
+NO_DISTS: 8, avg_acc: 0.23820395738203956
+NO_DISTS: 9, avg_acc: 0.23972602739726026
+Subject: date_understanding
+input len max: 58, min: 24, avg: 36.932
+completion len max: 7, min: 5, avg: 6.004
+NO_DISTS: 0, avg_acc: 0.344
+NO_DISTS: 1, avg_acc: 0.3533333333333333
+NO_DISTS: 2, avg_acc: 0.35788888888888903
+NO_DISTS: 3, avg_acc: 0.359809523809524
+NO_DISTS: 4, avg_acc: 0.3604126984126982
+NO_DISTS: 5, avg_acc: 0.36044444444444423
+NO_DISTS: 6, avg_acc: 0.3602857142857143
+NO_DISTS: 7, avg_acc: 0.36011111111111105
+NO_DISTS: 8, avg_acc: 0.35999999999999993
+NO_DISTS: 9, avg_acc: 0.36

@@ -143,19 +143,20 @@ class ARCProcessor(DatasetProcessor):
 
 
 class MMLUProcessor(DatasetProcessor):
-    def __init__(self):
-        SUBJECTS = ['high_school_european_history', 'business_ethics', 'clinical_knowledge', 'medical_genetics', \
-            'high_school_us_history', 'high_school_physics', 'high_school_world_history', 'virology', \
-            'high_school_microeconomics', 'econometrics', 'college_computer_science', 'high_school_biology', \
-            'abstract_algebra', 'professional_accounting', 'philosophy', 'professional_medicine', 'nutrition', \
-            'global_facts', 'machine_learning', 'security_studies', 'public_relations', 'professional_psychology', \
-            'prehistory', 'anatomy', 'human_sexuality', 'college_medicine', 'high_school_government_and_politics', \
-            'college_chemistry', 'logical_fallacies', 'high_school_geography', 'elementary_mathematics', 'human_aging', \
-            'college_mathematics', 'high_school_psychology', 'formal_logic', 'high_school_statistics', 'international_law', \
-            'high_school_mathematics', 'high_school_computer_science', 'conceptual_physics', 'miscellaneous', 'high_school_chemistry', \
-            'marketing', 'professional_law', 'management', 'college_physics', 'jurisprudence', 'world_religions', 'sociology', 'us_foreign_policy', \
-            'high_school_macroeconomics', 'computer_security', 'moral_scenarios', 'moral_disputes', 'electrical_engineering', 'astronomy', 'college_biology']
-        super().__init__(dataset_path="lukaemon/mmlu", subset=SUBJECTS)
+    def __init__(self, subjects=None):
+        if subjects is None:
+            subjects = ['high_school_european_history', 'business_ethics', 'clinical_knowledge', 'medical_genetics', \
+                'high_school_us_history', 'high_school_physics', 'high_school_world_history', 'virology', \
+                'high_school_microeconomics', 'econometrics', 'college_computer_science', 'high_school_biology', \
+                'abstract_algebra', 'professional_accounting', 'philosophy', 'professional_medicine', 'nutrition', \
+                'global_facts', 'machine_learning', 'security_studies', 'public_relations', 'professional_psychology', \
+                'prehistory', 'anatomy', 'human_sexuality', 'college_medicine', 'high_school_government_and_politics', \
+                'college_chemistry', 'logical_fallacies', 'high_school_geography', 'elementary_mathematics', 'human_aging', \
+                'college_mathematics', 'high_school_psychology', 'formal_logic', 'high_school_statistics', 'international_law', \
+                'high_school_mathematics', 'high_school_computer_science', 'conceptual_physics', 'miscellaneous', 'high_school_chemistry', \
+                'marketing', 'professional_law', 'management', 'college_physics', 'jurisprudence', 'world_religions', 'sociology', 'us_foreign_policy', \
+                'high_school_macroeconomics', 'computer_security', 'moral_scenarios', 'moral_disputes', 'electrical_engineering', 'astronomy', 'college_biology']
+        super().__init__(dataset_path="lukaemon/mmlu", subset=subjects)
 
     def _prepare_input_and_completions(self, doc, mode: str) -> Tuple[str, list]:
         """
@@ -194,8 +195,25 @@ class BigBenchProcessor(DatasetProcessor):
     '''
     def __init__(self, subjects=None):
         if subjects is None:
-            subjects = ['tracking_shuffled_objects_seven_objects', 'salient_translation_error_detection', 'tracking_shuffled_objects_three_objects', 'logical_deduction_five_objects', 'hyperbaton', 'logical_deduction_seven_objects', 'logical_deduction_three_objects', 'snarks', 'disambiguation_qa', 'temporal_sequences', 'tracking_shuffled_objects_five_objects', 'penguins_in_a_table', 'date_understanding']
-        
+            # full version with (A), (B), (C) ...
+            # subjects = ['tracking_shuffled_objects_seven_objects', 'salient_translation_error_detection', 'tracking_shuffled_objects_three_objects', 'logical_deduction_five_objects', 'hyperbaton', 'logical_deduction_seven_objects', 'logical_deduction_three_objects', 'snarks', 'disambiguation_qa', 'temporal_sequences', 'tracking_shuffled_objects_five_objects', 'penguins_in_a_table', 'date_understanding']
+            # performant version for t5
+            subjects = [
+                'date_understanding',
+                'penguins_in_a_table',
+                'logical_deduction_five_objects',
+                'salient_translation_error_detection',
+            ]
+
+            # performant version for ul2
+            subjects = [
+                'tracking_shuffled_objects_three_objects',
+                'logical_deduction_five_objects',
+                'logical_deduction_three_objects',
+                'disambiguation_qa',
+                'date_understanding'
+            ]
+
         super().__init__(dataset_path="maveriq/bigbenchhard", subset=subjects)
     
     def _prepare_input_and_completions(self, doc, mode: str) -> Tuple[str, list]:

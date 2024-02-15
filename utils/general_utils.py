@@ -1,5 +1,6 @@
 import subprocess
 import sys
+from tqdm import tqdm as original_tqdm
 import re
 from typing import List, Union, Dict, Any
 import time
@@ -148,3 +149,10 @@ def hash_object(obj):
 def remove_trailing_zeros_from_1d_tensor(tensor):
     ''' Remove trailing zeros from a 1D tensor '''
     return tensor[:torch.max(torch.nonzero(tensor)).item() + 1]
+
+
+# get a new tqdm that works properly with nohup.out
+def tqdm(*args, **kwargs):
+    if 'file' not in kwargs:
+        kwargs['file'] = sys.stdout
+    return original_tqdm(*args, **kwargs)

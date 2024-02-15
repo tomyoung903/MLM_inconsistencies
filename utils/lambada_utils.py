@@ -15,13 +15,13 @@ class LambadaProcessor:
     '''Various functions for lambada. Some process the original prompts and completions for EOC-style prompts and completions'''
     def __init__(self, 
                  tokenizer, 
-                 ul2_mode: str,
+                 mode: str,
                  lambada_dataset_path: str,
                  rm_punc_space:bool):
         '''
         Args:
             tokenizer: the tokenizer used to tokenize the input
-            ul2_mode: "[NLG]", "[NLU]" or "[S2S]"
+            mode: "[NLG]", "[NLU]", "[S2S]", "T5"
             lambada_dataset_path: the path to the lambada dataset
             rm_punc_space: whether to remove the spaces before punctuations in the completion
         '''
@@ -44,10 +44,10 @@ class LambadaProcessor:
                 for x in lambada
             ]
 
-        # append ul2_mode to the beginning of each input, and <extra_id_0> to the end
+        # append mode to the beginning of each input, and <extra_id_0> to the end
         lambada = [
             {
-                "inputs": ul2_mode + " " + x['inputs'] + " <extra_id_0>",
+                "inputs": mode + " " + x['inputs'] + " <extra_id_0>" if mode != 'T5' else x['inputs'] + " <extra_id_0>",
                 "targets": x['targets']
             } 
             for x in lambada
