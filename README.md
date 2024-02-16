@@ -1,6 +1,5 @@
 # MLM_inconsistencies
 Data and code for exposing the inconsistencies of conditionals learned by masked language models.
-https://arxiv.org/abs/2301.00068
 
 # Abstract
 
