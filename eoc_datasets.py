@@ -214,7 +214,8 @@ class BigBenchProcessor(DatasetProcessor):
                 'date_understanding'
             ]
 
-        super().__init__(dataset_path="maveriq/bigbenchhard", subset=subjects)
+        super().__init__(dataset_path
+                         ="maveriq/bigbenchhard", subset=subjects)
     
     def _prepare_input_and_completions(self, doc, mode: str) -> Tuple[str, list]:
         input, completions = doc['input'].split("Options:\n")
