@@ -1,5 +1,6 @@
 import torch
 
+# We experiment on bigbench and mmlu subjects where the baseline models are performing decently
 model_configs = {
     "t5-11b": {
         "model_name": "t5-11b",
@@ -16,7 +17,7 @@ model_configs = {
                 'penguins_in_a_table',
                 'logical_deduction_five_objects',
                 'salient_translation_error_detection',
-        ],
+        ], 
         "mmlu_subjects": ['high_school_european_history', 'clinical_knowledge', 'high_school_government_and_politics', 'high_school_psychology', 'conceptual_physics', 'marketing', 'world_religions', 'computer_security', 'astronomy']
     },
     "google-ul2": {
