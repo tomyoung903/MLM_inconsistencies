@@ -40,14 +40,4 @@ model_configs = {
             ],
         "mmlu_subjects": ['high_school_european_history', 'clinical_knowledge', 'high_school_government_and_politics', 'high_school_psychology', 'conceptual_physics', 'marketing', 'world_religions', 'computer_security', 'astronomy']
     },
-    "flan-ul2": {
-        "model_name": "google/flan-ul2",
-        "model_dir": "flan-ul2",
-        "mode": "Flan-UL2",
-        "no_extra_tokens": 0,
-        "model_kwargs": {
-            "device_map": "auto",
-            "load_in_8bit": True
-        }
-    }
 }
