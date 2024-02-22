@@ -9,9 +9,22 @@ Learning to predict masked tokens in a sequence has been shown to be a powerful 
 # Code & data
 python 3.11 
 
+conda create --name my_inconsistencies python=3.11.5
+conda activate my_inconsistencies
+pip install -r requirements.txt
+
+
+
+
 # Discussion
 
 We are doing more experiments on this topic at the moment. Leave a comment under ''issues'' for questions/discussion.
+
+
+
+
+
+
 
 
 # Strategy for different punctuations
