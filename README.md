@@ -1,51 +1,23 @@
-# MLM_inconsistencies
-Data and code for exposing the inconsistencies of conditionals learned by masked language models.
+# Inconsistencies in Masked Language Models
+Masked language models (e.g., UL2, T5, PaLM2) potentially learn inconsistent distributions of tokens. Inference-time ensembling can improve their accuracies.
 
-# Abstract
+## Abstract
 
+Learning to predict masked tokens in a sequence has been shown to be a helpful pretraining objective for powerful language models such as PaLM2. After training, such masked language models (MLMs) can provide distributions of tokens in the masked positions in a sequence. However, this paper shows that distributions corresponding to different masking patterns can demonstrate considerable inconsistencies, i.e., they cannot be derived from a coherent joint distribution when considered together. 
 
-Learning to predict masked tokens in a sequence has been shown to be a powerful pretraining objective for large-scale language models. After training, such masked language models can provide distributions of tokens conditioned on bidirectional context. In this short draft, we show that such bidirectional conditionals often demonstrate considerable inconsistencies, i.e., they can not be derived from a coherent joint distribution when considered together. We empirically quantify such inconsistencies in the simple scenario of bigrams for two common styles of masked language models: T5-style and BERT-style. For example, we show that T5 models often confuse its own preference regarding two similar bigrams. Such inconsistencies may represent a theoretical pitfall for the research work on sampling sequences based on the bidirectional conditionals learned by BERT-style MLMs. This phenomenon also means that T5-style MLMs capable of infilling will generate discrepant results depending on how much masking is given, which may represent a particular trust issue.
+This fundamental flaw in MLMs can lead to self-contradictory behaviors during inference. On various benchmark datasets including MMLU, MLMs can give different predictions to the same input question. From BERT-base to UL2-20B, we show that such inconsistencies exist ubiquitously in MLMs of diverse sizes and configurations. In light of our observations, we further propose an inference-time strategy for MLMs called Ensemble of Conditionals. It jointly considers a selected range of inconsistent conditionals directly produced by the MLM for the final prediction, which often leads to considerable accuracy improvement.
 
-# Code & data
-python 3.11 
+## How to run
 
-conda create --name my_inconsistencies python=3.11.5
-conda activate my_inconsistencies
+To set up environment:
+
+```
+conda create --name inconsistencies python=3.11.5
+conda activate inconsistencies
 pip install -r requirements.txt
+```
 
-
-
-
-# Discussion
-
-We are doing more experiments on this topic at the moment. Leave a comment under ''issues'' for questions/discussion.
-
-
-
-
-
-
-
-
-# Strategy for different punctuations
-
-click to expand
-In the LAMBADA last word prediction task, natural language models (LLMs) may append various punctuations to the same last word, leading to different completions. For example, to complete the sentence "My color of my pet dog is":
-
-Possible Completions:
-
-white. with probability p_1
-white! with probability p_2 (assuming p_1 > p_2)
-black, with probability p_3
-black? with probability p_4 (assuming p_3 > p_4)
-Strategies to Rank white and black:
-
-Maximum Probability Strategy
-Probability of white: p(white) = p_1
-Probability of black: p(black) = p_3
-Sum of Probabilities Strategy
-Probability of white: p(white) = p_1 + p_2
-Probability of black: p(black) = p_3 + p_4
-Afterwards p(_white_) and p(_black_) may need normalization.
-
-WE ARE STICKING WITH MAXIMUM PROBABILITY STRAGEGY ACCORDING TO ACCURACIES OBTAINED FROM TRIAL RUNS.
+To run experiments on MMLU and BigBench with UL2-20B and T5-11B, run 
+```
+main.ipynb
+```
