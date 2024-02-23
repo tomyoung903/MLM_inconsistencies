@@ -1,9 +1,15 @@
 # Inconsistencies in Masked Language Models
 Masked language models (e.g., UL2, T5, PaLM2) potentially learn inconsistent distributions of tokens. Inference-time ensembling can improve their accuracies.
 
-![Alt text for the image](pics/eoc_aggregated_accuracies.png "d")
+<img src="pics/conditionals.png" title="d" width="700"/>
 
-*Caption: Description of the image.*
+*We prompt the model for different versions of the same distribution to measure their disagreement and ensemble them to improve accuracy.*
+
+<img src="pics/eoc_aggregated_accuracies.png" title="d" width="400"/>
+
+*Ensembling different versions of the same distribution improves accuracy. Aggregated results.  *
+
+
 
 ## Abstract
 
@@ -25,5 +31,4 @@ To run experiments on MMLU and BigBench with UL2-20B and T5-11B, use
 ```
 main.ipynb
 ```
-
 
