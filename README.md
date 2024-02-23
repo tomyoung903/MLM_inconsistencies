@@ -1,6 +1,10 @@
 # Inconsistencies in Masked Language Models
 Masked language models (e.g., UL2, T5, PaLM2) potentially learn inconsistent distributions of tokens. Inference-time ensembling can improve their accuracies.
 
+![Alt text for the image](pics/eoc_aggregated_accuracies.png "d")
+
+*Caption: Description of the image.*
+
 ## Abstract
 
 Learning to predict masked tokens in a sequence has been shown to be a helpful pretraining objective for powerful language models such as PaLM2. After training, such masked language models (MLMs) can provide distributions of tokens in the masked positions in a sequence. However, this paper shows that distributions corresponding to different masking patterns can demonstrate considerable inconsistencies, i.e., they cannot be derived from a coherent joint distribution when considered together. 
@@ -21,4 +25,5 @@ To run experiments on MMLU and BigBench with UL2-20B and T5-11B, use
 ```
 main.ipynb
 ```
-git checkout dev -- publication/conditionals.png
+
+
