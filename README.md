@@ -21,3 +21,4 @@ To run experiments on MMLU and BigBench with UL2-20B and T5-11B, use
 ```
 main.ipynb
 ```
+git checkout dev -- publication/conditionals.png
