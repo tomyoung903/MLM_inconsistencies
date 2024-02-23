@@ -17,7 +17,7 @@ conda activate inconsistencies
 pip install -r requirements.txt
 ```
 
-To run experiments on MMLU and BigBench with UL2-20B and T5-11B, run 
+To run experiments on MMLU and BigBench with UL2-20B and T5-11B, use 
 ```
 main.ipynb
 ```
