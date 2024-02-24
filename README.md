@@ -9,7 +9,7 @@ Masked language models (e.g., UL2, T5, PaLM2) potentially learn inconsistent dis
 
 <img src="pics/eoc_aggregated_accuracies.png" title="eoc_aggregated_accuracies" width="400"/>
 
-*Figure 2: Ensembling different versions of the same distribution improves accuracy. Aggregated results.*
+*Figure 2: Ensembling different versions of the same distribution improves accuracy. Aggregated results from 2 models on 3 datasets.*
 
 
 
