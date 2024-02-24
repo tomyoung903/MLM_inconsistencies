@@ -3,7 +3,9 @@ Masked language models (e.g., UL2, T5, PaLM2) potentially learn inconsistent dis
 
 <img src="pics/conditionals.png" title="conditionals" width="700"/>
 
-*Figure 1: We prompt the model for different versions of the same distribution to measure their disagreement and ensemble them to improve accuracy. Our distribution of interest is P(?|Tom bought 4 apples and ate 2. He now has). ? can be 2.*
+*Figure 1: We prompt the model for different versions of the same distribution to measure their disagreement and ensemble them to improve accuracy.*
+
+*Our distribution of interest is P(?|Tom bought 4 apples and ate 2. He now has).   ? can be 2.*
 
 <img src="pics/eoc_aggregated_accuracies.png" title="eoc_aggregated_accuracies" width="400"/>
 
