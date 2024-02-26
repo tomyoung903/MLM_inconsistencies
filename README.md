@@ -36,6 +36,12 @@ To run experiments on MMLU and BigBench with UL2-20B and T5-11B, use
 main.ipynb
 ```
 
+## Authors
+
+- [Tom Young](https://tomyoung903.github.io/)
+- [Yunan Chen](https://chen1yunan.github.io/chenyunan.github.io/)
+- [Yang You](https://www.comp.nus.edu.sg/~youy/)
+
 ## Acknowledgments
 
 We thank [Fuzhao Xue](https://xuefuzhao.github.io/) and [Shenggui Li](https://franklee.xyz/) for the valuable discussions.
