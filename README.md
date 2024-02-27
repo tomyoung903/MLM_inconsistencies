@@ -36,6 +36,18 @@ To run experiments on MMLU and BigBench with UL2-20B and T5-11B, use
 main.ipynb
 ```
 
+## Citation
+
+```
+@article{young2022inconsistencies,
+  title={On the Inconsistencies of Conditionals Learned by Masked Language Models},
+  author={Young, Tom and You, Yang},
+  journal={arXiv preprint arXiv:2301.00068},
+  year={2022}
+}
+```
+
+
 ## Authors
 
 - [Tom Young](https://tomyoung903.github.io/)
