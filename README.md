@@ -43,7 +43,7 @@ main.ipynb
   title={On the Inconsistencies of Conditionals Learned by Masked Language Models},
   author={Young, Tom and Chen, Yunan and You, Yang},
   journal={arXiv preprint arXiv:2301.00068},
-  year={2022}
+  year={2023}
 }
 ```
 
